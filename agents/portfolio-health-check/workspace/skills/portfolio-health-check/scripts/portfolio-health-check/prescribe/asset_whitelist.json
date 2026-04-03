@@ -1,0 +1,88 @@
+{
+  "main_theme": [
+    {
+      "theme_name": "AI硬件",
+      "subthemes": ["算力", "CPO", "PCB", "光芯片", "光模块", "AI服务器", "GPU", "HBM", "交换机"],
+      "keywords": ["算力", "光模块", "CPO", "PCB", "AI服务器", "英伟达", "光芯片", "AI硬件"],
+      "primary_etfs": [{"code": "159819.SZ", "name": "人工智能ETF"}],
+      "proxy_etfs": [{"code": "512480.SH", "name": "半导体ETF", "note": "部分重叠AI硬件"}],
+      "reference_stocks": ["002415.SZ", "300474.SZ"],
+      "coverage_level": "medium"
+    },
+    {
+      "theme_name": "医药",
+      "subthemes": ["创新药", "CXO", "医疗器械", "中药", "医疗服务", "生物制品"],
+      "keywords": ["医药", "创新药", "CXO", "医疗器械", "生物医药", "医疗"],
+      "primary_etfs": [{"code": "512010.SH", "name": "医药ETF"}],
+      "proxy_etfs": [],
+      "reference_stocks": ["300760.SZ", "600276.SH"],
+      "coverage_level": "high"
+    },
+    {
+      "theme_name": "太空",
+      "subthemes": ["商业航天", "卫星", "火箭", "遥感", "北斗", "低轨通信"],
+      "keywords": ["航天", "卫星", "火箭", "太空", "北斗", "遥感"],
+      "primary_etfs": [],
+      "proxy_etfs": [{"code": "515750.SH", "name": "军工ETF", "note": "部分覆盖航天"}],
+      "reference_stocks": [],
+      "coverage_level": "low"
+    },
+    {
+      "theme_name": "机器人",
+      "subthemes": ["人形机器人", "减速器", "伺服电机", "控制器", "机器视觉", "灵巧手"],
+      "keywords": ["机器人", "减速器", "伺服", "特斯拉", "宇树", "灵巧手", "人形"],
+      "primary_etfs": [{"code": "562500.SH", "name": "机器人ETF"}],
+      "proxy_etfs": [],
+      "reference_stocks": [],
+      "coverage_level": "high"
+    },
+    {
+      "theme_name": "新能源-储能",
+      "subthemes": ["储能", "锂电", "钠电", "液流电池", "光伏储能", "工商业储能"],
+      "keywords": ["储能", "锂电", "钠电", "液流"],
+      "primary_etfs": [],
+      "proxy_etfs": [{"code": "516160.SH", "name": "新能源ETF", "note": "偏宽新能源"}],
+      "reference_stocks": ["300750.SZ"],
+      "coverage_level": "medium"
+    }
+  ],
+
+  "defensive": [
+    {
+      "asset_name": "黄金",
+      "primary_etfs": [{"code": "518880.SH", "name": "黄金ETF"}],
+      "trigger_conditions": ["hedge_in_objectives", "portfolio_vol_high", "max_dd_deep", "equity_heavy_no_buffer", "conservative_or_moderate"],
+      "suggested_range_pct": [3, 8],
+      "note": "与A股负相关，尾部风险对冲"
+    },
+    {
+      "asset_name": "国债",
+      "primary_etfs": [{"code": "511010.SH", "name": "国债ETF"}, {"code": "511260.SH", "name": "十年国债ETF"}],
+      "trigger_conditions": ["hedge_in_objectives", "portfolio_vol_high", "max_dd_deep", "conservative_or_moderate"],
+      "suggested_range_pct": [5, 15],
+      "note": "利率对冲，与股票近零相关"
+    },
+    {
+      "asset_name": "红利低波",
+      "primary_etfs": [{"code": "512890.SH", "name": "红利低波ETF"}],
+      "trigger_conditions": ["income_in_objectives", "portfolio_vol_high", "low_sharpe"],
+      "suggested_range_pct": [5, 15],
+      "note": "低波动+稳定股息，防御属性"
+    }
+  ],
+
+  "base_allocation": [
+    {
+      "asset_name": "宽基指数",
+      "primary_etfs": [{"code": "510300.SH", "name": "300ETF"}, {"code": "510500.SH", "name": "500ETF"}],
+      "role": "core_equity",
+      "note": "替代个股的分散化底仓"
+    },
+    {
+      "asset_name": "货币/现金等价物",
+      "primary_etfs": [],
+      "role": "cash_equivalent",
+      "note": "货币基金或逆回购，不需要推荐具体标的"
+    }
+  ]
+}

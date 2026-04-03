@@ -1,0 +1,20 @@
+[
+  {"code": "512890.SH", "name": "红利低波ETF", "category": ["low_volatility", "dividend", "value"], "sector": "broad", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "跟踪中证红利低波动指数"},
+  {"code": "510880.SH", "name": "红利ETF", "category": ["dividend"], "sector": "broad", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "上证红利指数"},
+  {"code": "511010.SH", "name": "国债ETF", "category": ["bond", "low_volatility"], "sector": "bond", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "5年期国债"},
+  {"code": "511260.SH", "name": "十年国债ETF", "category": ["bond", "low_volatility"], "sector": "bond", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "10年期国债"},
+  {"code": "518880.SH", "name": "黄金ETF", "category": ["gold", "hedge"], "sector": "commodity", "market": "A-share", "exposure_market": "global", "instrument_type": "etf", "requires_market_permission": null, "note": "与A股负相关"},
+  {"code": "510300.SH", "name": "300ETF", "category": ["broad_market", "option_underlying"], "sector": "broad", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "沪深300ETF"},
+  {"code": "510500.SH", "name": "500ETF", "category": ["broad_market"], "sector": "broad", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "中证500ETF"},
+  {"code": "159819.SZ", "name": "人工智能ETF", "category": ["sector_tech", "growth"], "sector": "tech", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "AI主题"},
+  {"code": "512480.SH", "name": "半导体ETF", "category": ["sector_tech"], "sector": "tech", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "半导体"},
+  {"code": "512010.SH", "name": "医药ETF", "category": ["sector_healthcare"], "sector": "healthcare", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "医药行业"},
+  {"code": "512800.SH", "name": "银行ETF", "category": ["sector_finance", "dividend"], "sector": "finance", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "银行行业"},
+  {"code": "512000.SH", "name": "券商ETF", "category": ["sector_finance"], "sector": "finance", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "券商行业"},
+  {"code": "159928.SZ", "name": "消费ETF", "category": ["sector_consumer"], "sector": "consumer", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "消费行业"},
+  {"code": "516160.SH", "name": "新能源ETF", "category": ["sector_energy", "growth"], "sector": "energy", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "新能源"},
+  {"code": "562500.SH", "name": "机器人ETF", "category": ["sector_tech", "growth"], "sector": "tech", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "机器人主题"},
+  {"code": "515750.SH", "name": "军工ETF", "category": ["sector_defense"], "sector": "defense", "market": "A-share", "exposure_market": "A-share", "instrument_type": "etf", "requires_market_permission": null, "note": "军工行业"},
+  {"code": "513100.SH", "name": "纳指ETF", "category": ["cross_border", "growth"], "sector": "tech", "market": "A-share", "exposure_market": "US", "instrument_type": "etf", "requires_market_permission": "qdii", "note": "纳斯达克100"},
+  {"code": "159920.SZ", "name": "恒生ETF", "category": ["cross_border"], "sector": "broad", "market": "A-share", "exposure_market": "HK", "instrument_type": "etf", "requires_market_permission": null, "note": "恒生指数"}
+]

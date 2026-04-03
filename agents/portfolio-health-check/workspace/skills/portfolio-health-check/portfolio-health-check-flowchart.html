@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portfolio Health Check — Flowchart</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #fff;
+    color: #222;
+    padding: 48px 20px;
+  }
+  h1 { text-align: center; font-size: 20px; font-weight: 600; color: #111; }
+  .sub { text-align: center; font-size: 12px; color: #aaa; margin-top: 4px; margin-bottom: 48px; }
+
+  .flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    max-width: 560px;
+    margin: 0 auto;
+  }
+
+  /* Boxes */
+  .box {
+    width: 100%;
+    border: 1.5px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 16px 20px;
+    background: #fff;
+    font-size: 13px;
+    line-height: 1.8;
+    color: #333;
+  }
+  .box b { color: #111; font-weight: 600; }
+  .box .label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #999;
+    margin-bottom: 8px;
+  }
+  .box ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .box li {
+    padding: 2px 0 2px 14px;
+    position: relative;
+  }
+  .box li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 10px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #ccc;
+  }
+
+  /* Phase header */
+  .phase {
+    width: 100%;
+    text-align: center;
+    padding: 8px 0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #fff;
+    border-radius: 6px;
+  }
+  .p1 { background: #3b82f6; }
+  .p2 { background: #16a34a; }
+  .p3 { background: #7c3aed; }
+
+  /* Diamond gate */
+  .gate {
+    width: 220px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+    background: #f9f9f9;
+    border: 1.5px solid #d0d0d0;
+    border-radius: 6px;
+  }
+
+  /* Arrow */
+  .arrow {
+    width: 1px;
+    height: 20px;
+    background: #ccc;
+    position: relative;
+  }
+  .arrow::after {
+    content: "";
+    position: absolute;
+    bottom: -5px;
+    left: -4px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #ccc;
+  }
+
+  /* End node */
+  .end {
+    width: 120px;
+    text-align: center;
+    padding: 8px 0;
+    font-size: 11px;
+    color: #999;
+    border: 1px solid #ddd;
+    border-radius: 20px;
+    background: #fafafa;
+  }
+
+  /* Side exit */
+  .row-with-exit {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    width: 100%;
+    justify-content: center;
+  }
+  .exit-arrow {
+    width: 36px;
+    height: 1px;
+    background: #ccc;
+    position: relative;
+  }
+  .exit-arrow::after {
+    content: "";
+    position: absolute;
+    right: -5px;
+    top: -4px;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 6px solid #ccc;
+  }
+  .exit-label { font-size: 10px; color: #bbb; }
+
+  /* Sample table */
+  .sample {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: 12px;
+  }
+  .sample th {
+    text-align: left;
+    padding: 5px 10px;
+    background: #f5f5f5;
+    color: #888;
+    font-weight: 600;
+    font-size: 11px;
+    border-bottom: 1px solid #e5e5e5;
+  }
+  .sample td {
+    padding: 4px 10px;
+    color: #555;
+    border-bottom: 1px solid #f0f0f0;
+  }
+</style>
+</head>
+<body>
+
+<h1>Portfolio Health Check</h1>
+<p class="sub">持仓健康检查 &middot; 交互流程图 &middot; BeixiAI</p>
+
+<div class="flow">
+
+  <!-- ====== Phase 1 ====== -->
+  <div class="phase p1">PHASE 1 &mdash; 快速诊断（LLM 提示词分析）</div>
+  <div class="arrow"></div>
+
+  <div class="box">
+    <div class="label">Input &mdash; 客户输入持仓</div>
+    客户提供持仓列表，格式不限：<br>
+    股票代码（600519）、名称（贵州茅台）、或混合格式<br>
+    持仓可能是金额、比例、或股数 → 系统统一转换为<b>持仓比例 (%)</b>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="box">
+    <div class="label">补全与确认（最多 3 步）</div>
+    <ul>
+      <li><b>步骤 1</b>（条件触发：客户只给了标的没给仓位）<br>每个资产的持仓比例是多少？</li>
+      <li><b>步骤 2</b>（始终执行）<br>将 <b>名称 + 代码(.SH/.SZ) + 比例 + 现金</b> 汇总发给客户确认</li>
+    </ul>
+    <table class="sample">
+      <tr><th>资产名称</th><th>代码</th><th>占比</th></tr>
+      <tr><td>贵州茅台</td><td>600519.SH</td><td>30%</td></tr>
+      <tr><td>宁德时代</td><td>300750.SZ</td><td>25%</td></tr>
+      <tr><td>中证500ETF</td><td>510500.SH</td><td>20%</td></tr>
+      <tr><td>招商银行</td><td>600036.SH</td><td>10%</td></tr>
+      <tr><td>现金</td><td>—</td><td>15%</td></tr>
+    </table>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="box">
+    <div class="label">Output &mdash; 快速诊断报告</div>
+    <ul>
+      <li><b>持仓概览</b>：行业分布、大小盘分布、资产类别构成</li>
+      <li><b>集中度 / 重叠分析</b>：是否过度集中于某个行业、风格或主题</li>
+      <li><b>总体评价</b>：一段话总结持仓整体状况和主要特征</li>
+    </ul>
+  </div>
+  <div class="arrow"></div>
+
+  <!-- Gate 1 -->
+  <div class="row-with-exit">
+    <div class="gate">是否进行深度分析？</div>
+    <div class="exit-arrow"></div>
+    <div class="exit-label">否 → 结束</div>
+  </div>
+  <div class="arrow"></div>
+
+  <!-- ====== Phase 2 ====== -->
+  <div class="phase p2">PHASE 2 &mdash; 深度诊断（量化技术分析）</div>
+  <div class="arrow"></div>
+
+  <div class="box">
+    <div class="label">Questions &mdash; 分析参数收集（4 个问题）</div>
+    <ul>
+      <li><b>Q1 换仓频率</b><br>日内 / 周度 / 月度 / 季度 / 长期持有<br>→ 决定拉取数据的维度（分钟~月线）和回看周期（1月~5年）</li>
+      <li><b>Q2 仓位管理风格</b><br>择时空仓型 / 满仓轮动 / 恒定比例 / 定投渐进 / 核心+卫星<br>→ 决定集中度和现金仓位的判断标准</li>
+      <li><b>Q3 风险承受力</b><br>保守 / 稳健 / 积极 / 激进<br>→ 决定回撤、波动率、集中度的报警阈值</li>
+      <li><b>Q4 投资期限</b><br>&lt;1年 / 1-3年 / 3-5年 / 5年以上<br>→ 决定波动容忍度和资产配置合理性判断</li>
+      <li><b>Q5 总投资金额</b>（可选）<br>客户自行输入（万元）<br>→ 用于计算流动性（清仓天数）。未提供则流动性板块仅展示日均成交额</li>
+    </ul>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="box">
+    <div class="label">Process &mdash; 量化分析引擎</div>
+    根据客户参数，拉取对应维度的行情数据，<br>
+    进行相关量化计算和分析
+  </div>
+  <div class="arrow"></div>
+
+  <div class="box">
+    <div class="label">Output &mdash; 量化诊断报告</div>
+    <ul>
+      <li><b>相关性热力图</b></li>
+      <li><b>组合风险指标汇总</b></li>
+      <li><b>因子暴露雷达图</b></li>
+      <li><b>关键风险点</b></li>
+    </ul>
+  </div>
+  <div class="arrow"></div>
+
+  <!-- Gate 2 -->
+  <div class="row-with-exit">
+    <div class="gate">是否需要优化建议？</div>
+    <div class="exit-arrow"></div>
+    <div class="exit-label">否 → 结束</div>
+  </div>
+  <div class="arrow"></div>
+
+  <!-- ====== Phase 3 ====== -->
+  <div class="phase p3">PHASE 3 &mdash; 优化处方（约束 + 建议生成）</div>
+  <div class="arrow"></div>
+
+  <div class="box">
+    <div class="label">Questions &mdash; 约束条件收集（3 个问题）</div>
+    <ul>
+      <li><b>Q1 可投资范围</b>（多选）<br>A股 / ETF / 期货 / 期权 / 港股通 / 美股 / 加密货币<br>→ 约束建议中可推荐的品种边界</li>
+      <li><b>Q2 剩余可投资金</b><br>满仓无余量 / 还有 10-30% / 还有 30-50% / 还有 50% 以上<br>→ 决定能否建议新增仓位</li>
+      <li><b>Q3 投资目标</b>（多选）<br>资产增值 / 稳定现金流 / 对冲已有风险 / 打新底仓<br>→ 决定优化方向和建议侧重</li>
+    </ul>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="box">
+    <div class="label">Output &mdash; 分层优化建议</div>
+    <ul>
+      <li><b>Layer 1 — 零成本操作</b>（无需额外资金或新账户）
+        <br>&nbsp;&nbsp;仓位再平衡（减持 A、增持 B）
+        <br>&nbsp;&nbsp;替换高相关性冗余持仓（用低相关标的替代）
+        <br>&nbsp;&nbsp;调整行业 / 因子暴露偏离
+      </li>
+      <li><b>Layer 2 — 需要额外资金</b>
+        <br>&nbsp;&nbsp;增加新资产类别以分散风险
+        <br>&nbsp;&nbsp;补充防御性持仓（债券 ETF、红利 ETF）
+        <br>&nbsp;&nbsp;建立现金缓冲仓位
+      </li>
+      <li><b>Layer 3 — 需要新品种 / 新账户</b>
+        <br>&nbsp;&nbsp;期权保护策略（Protective Put, Collar）→ 需期权账户
+        <br>&nbsp;&nbsp;商品对冲（黄金 / 原油期货）→ 需期货账户
+        <br>&nbsp;&nbsp;跨境分散（港股通 / 美股）→ 需相应权限
+      </li>
+    </ul>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="box">
+    <div class="label">Output &mdash; 优化前后对比</div>
+    <table class="sample">
+      <tr><th>指标</th><th>当前持仓</th><th>优化后（预估）</th></tr>
+      <tr><td>年化波动率</td><td>X%</td><td>Y%</td></tr>
+      <tr><td>最大回撤</td><td>X%</td><td>Y%</td></tr>
+      <tr><td>夏普比率</td><td>X</td><td>Y</td></tr>
+      <tr><td>最大单行业暴露</td><td>X%</td><td>Y%</td></tr>
+      <tr><td>持仓间最高相关性</td><td>X</td><td>Y</td></tr>
+    </table>
+  </div>
+  <div class="arrow"></div>
+
+  <div class="end">完成</div>
+
+</div>
+
+<p style="text-align:center; color:#ccc; font-size:10px; margin-top:48px;">Portfolio Health Check &middot; BeixiAI &middot; 2026-03-28</p>
+
+</body>
+</html>
