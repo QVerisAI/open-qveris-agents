@@ -50,12 +50,26 @@ openclaw
 
 ### Docker 部署
 
-参考 [arkClawDemo](https://github.com/Windy1226/arkClawDemo) 的 Dockerfile 和 docker-compose.yml。
+```bash
+# 以 portfolio-health-check 为例
+cd agents/portfolio-health-check
+
+# 构建镜像
+docker build -t qveris-agent .
+
+# 配置环境变量
+cp openclaw.env.example openclaw.env
+# 编辑 openclaw.env 填入实际的 API Key
+
+# 启动
+docker compose up -d
+```
+
+> 各 agent 目录下包含 `Dockerfile` 和 `docker-compose.yml`，可直接使用或根据需要调整。
 
 ## 相关仓库
 
 - [open-qveris-skills](https://github.com/QVerisAI/open-qveris-skills) — QVeris 技能代码（skill 级别）
-- [arkClawDemo](https://github.com/Windy1226/arkClawDemo) — 本地 Docker 开发环境
 
 ## License
 
