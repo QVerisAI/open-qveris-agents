@@ -1,0 +1,8 @@
+{
+  "active": false,
+  "interval_minutes": 5,
+  "keyword": "AI",
+  "page_size": 10,
+  "last_push_time": "",
+  "daily_summary_active": false
+}
