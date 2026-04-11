@@ -12,6 +12,7 @@
 | Agent | 描述 | 状态 |
 |-------|------|------|
 | [portfolio-health-check](agents/portfolio-health-check/) | 投资组合健康检查助手：快速诊断 → 深度诊断 → 优化处方 | ✅ 可用 |
+| [event-intelligence](agents/event-intelligence/) | 事件情报官：金融/产业事件语义检索、定时推送、深度投研报告（8 板块） | ✅ 可用 |
 
 ## 快速部署
 
