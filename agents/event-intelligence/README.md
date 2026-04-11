@@ -18,7 +18,6 @@
 
 - 参数转发（keyword / 时间窗口 / pageNo / pageSize）
 - 响应解包（含超大响应的 OSS 签名 URL 下载）
-- 统一计费（每次 execute 10 credits；search 不计费）
 
 ## 环境变量
 
