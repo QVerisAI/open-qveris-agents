@@ -26,7 +26,7 @@
 
 ```bash
 openclaw agents add portfolio-health-check
-cp -r workspace/ ~/.openclaw/workspace-portfolio-health-check/
+cp -r workspace/* ~/.openclaw/workspace-portfolio-health-check/
 ```
 
 #### 2. 主配置添加 agent
@@ -37,7 +37,7 @@ cp -r workspace/ ~/.openclaw/workspace-portfolio-health-check/
 {
   "id": "portfolio-health-check",
   "name": "投资组合健康检查助手",
-  "workspace": "~/.openclaw/workspace-portfolio-health-check",
+  "workspace": "/home/<user>/.openclaw/workspace-portfolio-health-check",
   "model": {
     "primary": "ark/kimi-k2.5",
     "fallbacks": ["ark/ark-code-latest"]

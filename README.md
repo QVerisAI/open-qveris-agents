@@ -47,7 +47,7 @@ openclaw agents add <AGENT>
 将仓库中的 workspace 复制到该 agent 的专属 workspace 目录：
 
 ```bash
-cp -r workspace/ ~/.openclaw/workspace-<AGENT>/
+cp -r workspace/* ~/.openclaw/workspace-<AGENT>/
 ```
 
 #### 3. 更新主配置
@@ -63,7 +63,7 @@ cp -r workspace/ ~/.openclaw/workspace-<AGENT>/
       {
         "id": "<AGENT>",
         "name": "显示名称",
-        "workspace": "~/.openclaw/workspace-<AGENT>",
+        "workspace": "/home/<user>/.openclaw/workspace-<AGENT>",
         "model": {
           "primary": "ark/kimi-k2.5",
           "fallbacks": ["ark/ark-code-latest"]

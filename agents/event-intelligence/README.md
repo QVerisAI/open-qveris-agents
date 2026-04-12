@@ -35,7 +35,7 @@
 
 ```bash
 openclaw agents add event-intelligence
-cp -r workspace/ ~/.openclaw/workspace-event-intelligence/
+cp -r workspace/* ~/.openclaw/workspace-event-intelligence/
 ```
 
 #### 2. 主配置添加 agent
@@ -46,7 +46,7 @@ cp -r workspace/ ~/.openclaw/workspace-event-intelligence/
 {
   "id": "event-intelligence",
   "name": "事件情报官",
-  "workspace": "~/.openclaw/workspace-event-intelligence",
+  "workspace": "/home/<user>/.openclaw/workspace-event-intelligence",
   "model": {
     "primary": "ark/kimi-k2.5",
     "fallbacks": ["ark/ark-code-latest"]
