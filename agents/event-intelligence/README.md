@@ -29,18 +29,50 @@
 
 ## 部署
 
+> 通用流程见 [根目录 README](../../README.md#部署)，以下是本 agent 的具体配置。
+
+#### 1. 新建 agent + 复制 workspace
+
 ```bash
-# 1. 配置环境变量
-cp openclaw.env.example ~/.openclaw/openclaw.env
-# 编辑填入实际 Key
+openclaw agents add event-intelligence
+mkdir -p ~/.openclaw/workspace-event-intelligence
+cp -r workspace/* ~/.openclaw/workspace-event-intelligence/
+```
 
-# 2. 复制 workspace
-cp -r workspace/* ~/.openclaw/workspace/
+#### 2. 主配置添加 agent
 
-# 3. 复制配置
-cp openclaw.json ~/.openclaw/openclaw.json
+在 `~/.openclaw/openclaw.json` 的 `agents.list` 中加入：
 
-# 4. 启动
+```jsonc
+{
+  "id": "event-intelligence",
+  "name": "事件情报官",
+  "workspace": "/home/<user>/.openclaw/workspace-event-intelligence",
+  "model": {
+    "primary": "ark/kimi-k2.5",
+    "fallbacks": ["ark/ark-code-latest"]
+  }
+}
+```
+
+#### 3. 环境变量
+
+将 `openclaw.env.example` 中的变量追加到 `~/.openclaw/openclaw.env`（去重已有的）。
+
+#### 4. 路由绑定
+
+在 `~/.openclaw/openclaw.json` 的 `bindings` 中绑定渠道：
+
+```jsonc
+{
+  "agentId": "event-intelligence",
+  "match": { "channel": "<your-channel>", "accountId": "<your-account>" }
+}
+```
+
+#### 5. 启动
+
+```bash
 openclaw
 ```
 
@@ -128,4 +160,6 @@ workspace/
 - **主模型：** Kimi K2.5（`ark/kimi-k2.5`）
 - **备选：** Ark Code Latest（`ark/ark-code-latest`）
 
-如需切换模型，修改 `openclaw.json` 中的 `agents.defaults.model`。
+如需切换模型，修改 `~/.openclaw/openclaw.json` 中该 agent 在 `agents.list` 里的 `model` 字段。
+
+> 本目录下的 `openclaw.json` 是单 agent 模式的参考配置（含 models.providers 定义）。多 agent 部署时，请将其中的 `models.providers` 合并到主配置，agent 本身通过 `agents.list` 条目配置。
