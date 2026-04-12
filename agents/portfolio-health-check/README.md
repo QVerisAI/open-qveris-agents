@@ -20,21 +20,55 @@
 
 ## 部署
 
+> 通用流程见 [根目录 README](../../README.md#部署)，以下是本 agent 的具体配置。
+
+#### 1. 新建 agent + 复制 workspace
+
 ```bash
-# 1. 配置环境变量
-cp openclaw.env.example ~/.openclaw/openclaw.env
-# 编辑填入实际 Key
+openclaw agents add portfolio-health-check
+cp -r workspace/ ~/.openclaw/workspace-portfolio-health-check/
+```
 
-# 2. 复制 workspace
-cp -r workspace/* ~/.openclaw/workspace/
+#### 2. 主配置添加 agent
 
-# 3. 复制配置
-cp openclaw.json ~/.openclaw/openclaw.json
+在 `~/.openclaw/openclaw.json` 的 `agents.list` 中加入：
 
-# 4. 安装 Python 依赖
+```jsonc
+{
+  "id": "portfolio-health-check",
+  "name": "投资组合健康检查助手",
+  "workspace": "~/.openclaw/workspace-portfolio-health-check",
+  "model": {
+    "primary": "ark/kimi-k2.5",
+    "fallbacks": ["ark/ark-code-latest"]
+  }
+}
+```
+
+#### 3. 环境变量
+
+将 `openclaw.env.example` 中的变量追加到 `~/.openclaw/openclaw.env`（去重已有的）。
+
+#### 4. 安装 Python 依赖
+
+```bash
 pip install pandas numpy requests matplotlib
+```
 
-# 5. 启动
+#### 5. 路由绑定
+
+在 `~/.openclaw/openclaw.json` 的 `bindings` 中绑定渠道：
+
+```jsonc
+{
+  "agentId": "portfolio-health-check",
+  "match": { "channel": "<your-channel>", "accountId": "<your-account>" }
+}
+```
+
+#### 6. 启动
+
+```bash
 openclaw
 ```
 
@@ -101,4 +135,4 @@ workspace/
 - **主模型：** Kimi K2.5（`ark/kimi-k2.5`）
 - **备选：** Ark Code Latest（`ark/ark-code-latest`）
 
-如需切换模型，修改 `openclaw.json` 中的 `agents.defaults.model`。
+如需切换模型，修改 `~/.openclaw/openclaw.json` 中该 agent 在 `agents.list` 里的 `model` 字段。
