@@ -47,6 +47,17 @@ description: 串联投资组合快速诊断、深度诊断和优化处方三个�
 - 始终区分"已知信息"和"基于假设的信息"。
 - 默认不要生成 HTML、PDF 或其他本地报告文件。优先把每阶段结论整理成结构化中文文字，交给 OpenClaw 继续转述给客户。
 
+## 路径约定
+
+本技能的所有脚本均位于本 SKILL.md 所在目录下。执行命令前，agent 应先从 SKILL.md 的加载路径推导出技能根目录，后续所有 `cd` 使用该路径，**不要硬编码绝对路径**：
+
+```bash
+# SKILL_ROOT = 本 SKILL.md 所在目录
+cd "$SKILL_ROOT" && python scripts/portfolio-health-check/qveris_client.py identify "贵州茅台"
+```
+
+如果 agent 是通过读取 SKILL.md 获得路径的，直接取其父目录即可。
+
 ## 数据来源原则
 
 - **第 1 阶段**必须先调用 QVeris 做标的识别（`identify` 命令），至少补齐股票名称/代码互查、公司简介和行业简介。如 QVeris 无法返回结果，再用公开网络检索补全基础背景。
@@ -57,9 +68,9 @@ description: 串联投资组合快速诊断、深度诊断和优化处方三个�
 ## QVeris 工具（仅第 1 阶段使用）
 
 ```bash
-cd ~/.openclaw/workspace/skills/portfolio-health-check && python scripts/portfolio-health-check/qveris_client.py identify "贵州茅台"
-cd ~/.openclaw/workspace/skills/portfolio-health-check && python scripts/portfolio-health-check/qveris_client.py identify "贵州茅台" "中国平安" "沪深300ETF"
-cd ~/.openclaw/workspace/skills/portfolio-health-check && python scripts/portfolio-health-check/qveris_client.py state show
+cd "$SKILL_ROOT" && python scripts/portfolio-health-check/qveris_client.py identify "贵州茅台"
+cd "$SKILL_ROOT" && python scripts/portfolio-health-check/qveris_client.py identify "贵州茅台" "中国平安" "沪深300ETF"
+cd "$SKILL_ROOT" && python scripts/portfolio-health-check/qveris_client.py state show
 ```
 
 - 第 1 阶段只要开始标的识别，就必须至少调用一次 `identify`。

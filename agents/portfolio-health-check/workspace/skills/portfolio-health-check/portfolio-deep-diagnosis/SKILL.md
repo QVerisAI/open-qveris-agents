@@ -16,6 +16,10 @@ description: 用于对投资组合进行深度诊断。收集 4 个分析参数�
 - 识别组合中的风格暴露和因子偏向
 - 输出量化/技术视角的诊断结论，并整理成可直接转述给客户的结构化文字
 
+## 路径约定
+
+`SKILL_ROOT` = 本 SKILL.md 的**父目录**（即 `portfolio-health-check/` 技能根目录）。所有 `cd "$SKILL_ROOT"` 命令均指向技能根目录，不要硬编码绝对路径。
+
 ## 前提条件
 
 - 第 1 阶段（快速诊断）已完成，持仓确认表已定稿
@@ -75,7 +79,7 @@ description: 用于对投资组合进行深度诊断。收集 4 个分析参数�
 **Step 2b：调用 CLI**
 
 ```bash
-cd ~/.openclaw/workspace/skills/portfolio-health-check && \
+cd "$SKILL_ROOT" && \
   python scripts/portfolio-health-check/pipeline_main.py \
   /tmp/portfolio_payload.json \
   --emit-artifacts \

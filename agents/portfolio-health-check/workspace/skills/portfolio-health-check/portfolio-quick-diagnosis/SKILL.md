@@ -36,6 +36,10 @@ description: 用于快速分析投资组合的持仓概览、集中度检查和�
 - 最多进行 3 轮补充信息对话。
 - 默认不要生成 HTML、PDF 或其他本地报告文件。优先输出结构化中文结果。
 
+## 路径约定
+
+`SKILL_ROOT` = 本 SKILL.md 的**父目录**（即 `portfolio-health-check/` 技能根目录）。所有 `cd "$SKILL_ROOT"` 命令均指向技能根目录，不要硬编码绝对路径。
+
 ## 标的识别规则
 
 阶段一的第一步必须先做标的识别，通过 QVeris `identify` 命令一次性获取：
@@ -53,13 +57,13 @@ description: 用于快速分析投资组合的持仓概览、集中度检查和�
 单个标的：
 
 ```bash
-cd ~/.openclaw/workspace/skills/portfolio-health-check && python scripts/portfolio-health-check/qveris_client.py identify "贵州茅台"
+cd "$SKILL_ROOT" && python scripts/portfolio-health-check/qveris_client.py identify "贵州茅台"
 ```
 
 多个标的（批量）：
 
 ```bash
-cd ~/.openclaw/workspace/skills/portfolio-health-check && python scripts/portfolio-health-check/qveris_client.py identify "贵州茅台" "中国平安" "沪深300ETF"
+cd "$SKILL_ROOT" && python scripts/portfolio-health-check/qveris_client.py identify "贵州茅台" "中国平安" "沪深300ETF"
 ```
 
 `identify` 命令会依次调用三个工具：

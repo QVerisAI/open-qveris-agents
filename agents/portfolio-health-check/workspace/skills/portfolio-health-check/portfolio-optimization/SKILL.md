@@ -16,6 +16,10 @@ description: 用于基于约束条件生成投资组合优化处方。调用 pre
 - 给出零成本、需额外资金、需新品种三级建议
 - 输出优化前后对比的结构化结果，方便直接转述给客户
 
+## 路径约定
+
+`SKILL_ROOT` = 本 SKILL.md 的**父目录**（即 `portfolio-health-check/` 技能根目录）。所有 `cd "$SKILL_ROOT"` 命令均指向技能根目录，不要硬编码绝对路径。
+
 ## 前提条件
 
 - 第 2 阶段（深度诊断）已完成，`run_pipeline()` 的完整输出可用
@@ -73,7 +77,7 @@ description: 用于基于约束条件生成投资组合优化处方。调用 pre
 **Step 2b：调用 CLI**
 
 ```bash
-cd ~/.openclaw/workspace/skills/portfolio-health-check && \
+cd "$SKILL_ROOT" && \
   python scripts/portfolio-health-check/prescription_main.py \
   --diagnosis /tmp/portfolio_output/diagnosis_result.json \
   --internal /tmp/portfolio_output/_internal.json \

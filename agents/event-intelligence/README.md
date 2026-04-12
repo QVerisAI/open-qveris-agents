@@ -35,6 +35,7 @@
 
 ```bash
 openclaw agents add event-intelligence
+mkdir -p ~/.openclaw/workspace-event-intelligence
 cp -r workspace/* ~/.openclaw/workspace-event-intelligence/
 ```
 
@@ -160,3 +161,5 @@ workspace/
 - **备选：** Ark Code Latest（`ark/ark-code-latest`）
 
 如需切换模型，修改 `~/.openclaw/openclaw.json` 中该 agent 在 `agents.list` 里的 `model` 字段。
+
+> 本目录下的 `openclaw.json` 是单 agent 模式的参考配置（含 models.providers 定义）。多 agent 部署时，请将其中的 `models.providers` 合并到主配置，agent 本身通过 `agents.list` 条目配置。

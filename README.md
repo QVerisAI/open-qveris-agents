@@ -44,15 +44,16 @@ openclaw agents add <AGENT>
 
 #### 2. 复制 workspace
 
-将仓库中的 workspace 复制到该 agent 的专属 workspace 目录：
+将仓库中的 workspace 内容复制到该 agent 的专属 workspace 目录：
 
 ```bash
+mkdir -p ~/.openclaw/workspace-<AGENT>
 cp -r workspace/* ~/.openclaw/workspace-<AGENT>/
 ```
 
 #### 3. 更新主配置
 
-编辑 `~/.openclaw/openclaw.json`，在 `agents.list` 数组中添加该 agent：
+确认 `~/.openclaw/openclaw.json` 的 `agents.list` 中已有该 agent 条目（`openclaw agents add` 通常会自动创建）。如需调整模型等参数，编辑对应条目：
 
 ```jsonc
 {
