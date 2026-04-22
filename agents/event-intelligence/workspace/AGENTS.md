@@ -288,7 +288,7 @@ Also consult `routing-rules.json` (especially its `pipelines.event-intelligence`
 - Config: `skills/event-intelligence/state/push_config.json` 持久化间隔、关键词等参数
 - 间隔修改同时记录到 `memory/YYYY-MM-DD.md`
 
-10) Safety & cost
+9) Safety & cost
 - Prefer minimal toolset; avoid parallel skill spam. When in doubt, ask.
 - For paid APIs: confirm before large/looped calls. Batch where possible.
 
