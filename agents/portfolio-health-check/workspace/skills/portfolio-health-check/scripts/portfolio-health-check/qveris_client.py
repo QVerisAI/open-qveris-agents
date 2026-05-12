@@ -82,43 +82,41 @@ class QVerisClient:
         url = f"{self.config.base_url}/search"
         return self._post_json(url, payload)
 
+    @staticmethod
+    def _normalize_cn_code(identifier: str) -> str:
+        # 上游 ths_ifind / cn_financial_pro 的 company_basics 端点对裸 6 位代码
+        # 返回字段全空，必须带交易所后缀（.SH/.SZ/.BJ）；这里按沪深 A 股编码
+        # 段做最小推断。已带 . 的直接透传；无法判定的也透传，让上游回报错误。
+        s = identifier.strip()
+        if "." in s or not s.isdigit() or len(s) != 6:
+            return s
+        first = s[0]
+        if first in ("6", "9"):  # 沪市 A/B
+            return f"{s}.SH"
+        if first in ("0", "2", "3"):  # 深市 A/B/创业板
+            return f"{s}.SZ"
+        if first in ("4", "8"):  # 北交所
+            return f"{s}.BJ"
+        return s
+
     def lookup_security_profile(
         self, identifier: str, limit: int = 5, session_id: str = ""
     ) -> Dict[str, Any]:
-        # 单次搜索覆盖代码转换、公司信息和行业分类。
-        query = f"stock code company profile industry {identifier}"
-        search_result = self.search_tools(query, limit=limit, session_id=session_id)
-
-        tools_found = []
-        for tool in search_result.get("results", []):
-            tools_found.append(
-                {
-                    "tool_id": tool.get("tool_id", ""),
-                    "name": tool.get("name", ""),
-                    "description": tool.get("description", "")[:120],
-                }
-            )
-
-        # Try to auto-run company info tool for actual data
+        # 不再用 /search 做 discover-gate（语义匹配脆弱，常把可用工具误判为不存在）；
+        # 候选工具是硬编码列表，直接逐个 execute，第一个成功的就用。
+        del limit  # 显式标记忽略以便静态检查
+        normalized = self._normalize_cn_code(identifier)
         profile_data = None
-        search_id = search_result.get("search_id", "")
         _CANDIDATE_TOOLS = [
+            ("ths_ifind.company_basics.v1", {"codes": normalized}),
             ("mcp_gildata.companybasicinfo.v1", {"query": identifier}),
-            ("ths_ifind.company_basics.v1", {"codes": identifier}),
         ]
         for target_tool_id, params in _CANDIDATE_TOOLS:
             if profile_data is not None:
                 break
-            matched = any(
-                t.get("tool_id") == target_tool_id
-                for t in search_result.get("results", [])
-            )
-            if not (matched and search_id):
-                continue
             try:
                 run_result = self._run_tool(
                     tool_id=target_tool_id,
-                    search_id=search_id,
                     parameters=params,
                     session_id=session_id,
                 )
@@ -129,20 +127,18 @@ class QVerisClient:
         return {
             "identifier": identifier,
             "profile": profile_data,
-            "tools_found": tools_found[:5],
+            "tools_found": [],
         }
 
     def _run_tool(
         self,
         tool_id: str,
-        search_id: str,
         parameters: Dict[str, Any],
         session_id: str = "",
     ) -> Dict[str, Any]:
         """Thin wrapper around execute_tool for lookup_security_profile."""
         return self.execute_tool(
             tool_id=tool_id,
-            search_id=search_id,
             parameters=parameters,
             session_id=session_id,
         )
@@ -591,15 +587,12 @@ class QVerisClient:
         limit: int = 10,
         max_response_size: int = 102400,
     ) -> Dict[str, Any]:
-        search_result = self.search_tools(query, limit=limit, session_id=session_id)
-        matched = any(
-            tool.get("tool_id") == tool_id for tool in search_result.get("results", [])
-        )
-        if not matched:
-            raise RuntimeError(f"Tool {tool_id} not found for query: {query}")
+        # `query` 保留入参用于向后兼容，但不再用作 discover-gate。
+        # 直接走 execute；broker 不需要 search_id，且老 discover 语义
+        # 匹配脆弱，常把可用 tool 误判为下线。
+        del query, limit  # 显式标记忽略以便静态检查
         return self.execute_tool(
             tool_id=tool_id,
-            search_id=search_result["search_id"],
             parameters=parameters,
             session_id=session_id,
             max_response_size=max_response_size,
@@ -1073,7 +1066,7 @@ class QVerisClient:
             }
         )
 
-        search_cache: Dict[str, Dict[str, Any]] = {}
+        del limit  # 不再用 discover-gate，limit 入参保留只是为了签名兼容
         executed: list[Dict[str, Any]] = []
 
         for spec in datasets:
@@ -1094,35 +1087,10 @@ class QVerisClient:
                 executed.append(cached_result)
                 continue
 
-            tool_kind = spec["tool_kind"]
-            if tool_kind not in search_cache:
-                query = spec["query"]
-                search_cache[tool_kind] = self.search_tools(
-                    query, limit=limit, session_id=session_id
-                )
-
-            search_result = search_cache[tool_kind]
-            chosen = None
-            for tool in search_result.get("results", []):
-                if tool.get("tool_id") == spec["tool_id"]:
-                    chosen = tool
-                    break
-
-            if not chosen:
-                executed.append(
-                    {
-                        "dataset_id": spec["dataset_id"],
-                        "tool_id": spec["tool_id"],
-                        "parameters": spec["parameters"],
-                        "error": "matching tool not found in search results",
-                        "search_result": search_result,
-                    }
-                )
-                continue
-
+            # 不再做 discover-gate（语义 query 命中率不稳定），直接 execute；
+            # 真正的失败信号由 broker 返回 status_code/error 暴露。
             payload = self.execute_tool(
                 tool_id=spec["tool_id"],
-                search_id=search_result["search_id"],
                 parameters=spec["parameters"],
                 session_id=session_id,
             )
@@ -1143,7 +1111,6 @@ class QVerisClient:
                 {
                     "format": self.ARTIFACT_FORMAT,
                     "spec": spec,
-                    "search_id": search_result["search_id"],
                     "tool_id": spec["tool_id"],
                     "parameters": spec["parameters"],
                     "rows": normalized_series,
@@ -1156,7 +1123,6 @@ class QVerisClient:
                     "dataset_id": spec["dataset_id"],
                     "tool_id": spec["tool_id"],
                     "parameters": spec["parameters"],
-                    "search_id": search_result["search_id"],
                     "artifact_path": artifact_path,
                     "summaries": summaries,
                     "series_count": len(normalized_series),
@@ -1238,17 +1204,21 @@ class QVerisClient:
     def execute_tool(
         self,
         tool_id: str,
-        search_id: str,
         parameters: Dict[str, Any],
+        search_id: str = "",
         session_id: str = "",
         max_response_size: int = 102400,
     ) -> Dict[str, Any]:
-        # 根据 search 返回的 tool_id 和 search_id，调用真正的执行接口。
+        # Qveris broker 现已不再强制 search_id —— 老逻辑里那次 /search 是
+        # discover-then-execute 的遗留约束，但 discover 语义匹配很脆弱，
+        # 一旦目标 tool 跌出 top-N 就 false-negative，把可用工具误判为不存在。
+        # 直接走 execute 端点，broker 自己根据 tool_id 路由即可。
         payload: Dict[str, Any] = {
-            "search_id": search_id,
             "parameters": parameters,
             "max_response_size": max_response_size,
         }
+        if search_id:
+            payload["search_id"] = search_id
         if session_id:
             payload["session_id"] = session_id
 
@@ -1336,9 +1306,14 @@ def main() -> None:
 
     execute_parser = subparsers.add_parser("execute", help="Execute a QVeris tool")
     execute_parser.add_argument("tool_id", help="Tool id from search results")
-    execute_parser.add_argument("search_id", help="Search id from the search call")
     execute_parser.add_argument(
         "parameters", nargs="?", help="JSON string of tool parameters"
+    )
+    execute_parser.add_argument(
+        "--search-id",
+        dest="search_id",
+        default="",
+        help="Optional search id (broker no longer requires it)",
     )
     execute_parser.add_argument(
         "--parameters-json",
