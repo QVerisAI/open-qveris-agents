@@ -111,32 +111,95 @@ class TestExecuteToolPayloadShape:
 
 
 class TestLookupSecurityProfileStripsIdentifier:
-    """Identifier 在函数顶部 strip 一次，覆盖所有候选 tool 的参数路径。
-    `_normalize_cn_code` 内部只在纯数字 6 位分支 strip，不能覆盖 mcp_gildata
-    的 {"query": identifier} 这条候选——CLI 粘贴 / 用户输入常带尾空格。
+    """Identifier 在函数顶部 strip 一次，覆盖下游 tool 的参数路径——
+    CLI 粘贴 / 用户输入容易带尾空格。
     """
 
-    def test_identifier_stripped_before_passing_to_all_candidates(self, monkeypatch):
+    def test_identifier_stripped_before_passing_to_candidates(self, monkeypatch):
         c = QVerisClient()
         captured_params: list[dict] = []
 
         def fake_run_tool(tool_id, parameters, session_id=""):
             captured_params.append({"tool_id": tool_id, "parameters": parameters})
-            # 返回空 result 让 _extract_profile_from_result 返回 None，
-            # 这样循环会尝试所有候选，我们能验证每条都拿到 stripped identifier
             return {"result": {"status_code": 200, "data": {}}}
 
         monkeypatch.setattr(c, "_run_tool", fake_run_tool)
         c.lookup_security_profile("  600519  ")
 
-        # ths_ifind 走 normalize 路径 → "600519.SH"
+        # hangseng 主候选：StockObject 数组里的代码经过 _normalize_cn_code → "600519.SH"
+        hangseng = next(
+            p for p in captured_params if p["tool_id"].startswith("hangseng_polysource")
+        )
+        assert hangseng["parameters"]["StockObject"] == ["600519.SH"]
+        assert " " not in hangseng["parameters"]["StockObject"][0]
+
+        # ths_ifind fallback：codes 同样 strip + 补后缀
         ths = next(p for p in captured_params if p["tool_id"].startswith("ths_ifind"))
         assert ths["parameters"]["codes"] == "600519.SH"
         assert " " not in ths["parameters"]["codes"]
 
-        # mcp_gildata 拿 raw identifier，必须已 strip
-        gildata = next(
-            p for p in captured_params if p["tool_id"].startswith("mcp_gildata")
-        )
-        assert gildata["parameters"]["query"] == "600519"
-        assert " " not in gildata["parameters"]["query"]
+
+class TestExtractProfileFromHangsengResult:
+    """hangseng_polysource.basicCorpInfo.retrieve.v2 返回 4 层嵌套 wrapper
+    (result.data.data.data.rows[0])，验证解析路径正确且 ticker 用 fallback 补后缀。
+    """
+
+    def test_extracts_name_industry_and_overrides_ticker_with_fallback(self):
+        c = QVerisClient()
+        raw = {
+            "result": {
+                "status_code": 200,
+                "data": {
+                    "message": "操作成功",
+                    "data": {
+                        "datatype": "map",
+                        "datasize": 1,
+                        "data": {
+                            "rows": [
+                                {
+                                    "stockcode": "600519",
+                                    "chiname": "贵州茅台酒股份有限公司",
+                                    "stockname": "贵州茅台",
+                                    "industrysw": "食品饮料-白酒Ⅱ-白酒Ⅲ",
+                                    "industryzjh": "制造业-酒、饮料和精制茶制造业",
+                                    "industryzx": "食品饮料-酒类-白酒",
+                                }
+                            ]
+                        },
+                    },
+                },
+            }
+        }
+
+        result = c._extract_profile_from_result(raw, fallback_ticker="600519.SH")
+        assert result == {
+            "ticker": "600519.SH",  # bare "600519" 被 fallback "600519.SH" 覆盖
+            "name": "贵州茅台酒股份有限公司",
+            "industry": "食品饮料-白酒Ⅱ-白酒Ⅲ",  # industrysw 优先
+        }
+
+    def test_falls_back_to_ths_ifind_path_when_hangseng_shape_missing(self):
+        c = QVerisClient()
+        # ths_ifind 形态：result.data 是 list[dict]
+        raw = {
+            "result": {
+                "status_code": 200,
+                "data": [
+                    {
+                        "ths_thscode_stock": "000001.SZ",
+                        "ths_corp_cn_name_stock": "平安银行股份有限公司",
+                    }
+                ],
+            }
+        }
+
+        result = c._extract_profile_from_result(raw, fallback_ticker="000001.SZ")
+        assert result is not None
+        assert result["name"] == "平安银行股份有限公司"
+        # industry 在 ths_ifind 路径下上游返空，符合数据源限制
+        assert result["industry"] == ""
+
+    def test_returns_none_when_neither_shape_matches(self):
+        c = QVerisClient()
+        raw = {"result": {"status_code": 200, "data": {}}}
+        assert c._extract_profile_from_result(raw, fallback_ticker="X") is None

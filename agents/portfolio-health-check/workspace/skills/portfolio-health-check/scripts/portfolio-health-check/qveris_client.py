@@ -104,16 +104,21 @@ class QVerisClient:
     ) -> Dict[str, Any]:
         # 不再用 /search 做 discover-gate（语义匹配脆弱，常把可用工具误判为不存在）；
         # 候选工具是硬编码列表，直接逐个 execute，第一个成功的就用。
+        # 在函数开头统一 strip，防止 CLI 粘贴 / 用户输入的尾空格漏到下游 tool 参数里。
         del limit  # 显式标记忽略以便静态检查
-        # 在函数开头统一 strip，避免 mcp_gildata 收到 "600519 " 这种带空格的 query
-        # 后 404 / 模糊匹配；_normalize_cn_code 内部只对纯数字 6 位分支 strip，
-        # 不能覆盖 mcp_gildata 这条候选。
         identifier = identifier.strip()
         normalized = self._normalize_cn_code(identifier)
         profile_data = None
+        # mcp_gildata 整个 provider 已下线，改用 hangseng_polysource.basicCorpInfo.retrieve
+        # 作为主候选——80% 成功率，返回 chiname / stockname / industrysw / industryzjh /
+        # industryzx 等完整字段，industry 不再空。ths_ifind.company_basics 留作 fallback
+        # （只补 name；industry 字段上游返空属数据源限制）。
         _CANDIDATE_TOOLS = [
+            (
+                "hangseng_polysource.stock.basicCorpInfo.retrieve.v2.d7c68583",
+                {"StockObject": [normalized], "pageNo": 1, "pageSize": 10},
+            ),
             ("ths_ifind.company_basics.v1", {"codes": normalized}),
-            ("mcp_gildata.companybasicinfo.v1", {"query": identifier}),
         ]
         for target_tool_id, params in _CANDIDATE_TOOLS:
             if profile_data is not None:
@@ -124,7 +129,9 @@ class QVerisClient:
                     parameters=params,
                     session_id=session_id,
                 )
-                profile_data = self._extract_profile_from_result(run_result)
+                profile_data = self._extract_profile_from_result(
+                    run_result, fallback_ticker=normalized
+                )
             except Exception:
                 pass  # Try next candidate or fallback
 
@@ -148,53 +155,48 @@ class QVerisClient:
         )
 
     def _extract_profile_from_result(
-        self, raw: Dict[str, Any]
+        self,
+        raw: Dict[str, Any],
+        fallback_ticker: str = "",
     ) -> Optional[Dict[str, str]]:
         """Extract ticker/name/industry from tool execution result.
 
-        Handles two formats:
-        - gildata: markdown table in result.data.results[].table_markdown
-        - ths_ifind: dict rows via _flatten_result_rows
+        Supports two payload shapes:
+        - hangseng_polysource.basicCorpInfo.retrieve: 4-level nested wrapper
+          (result.data.data.data.rows[0]) with chiname/stockcode/industrysw 等
+          字段；ticker 返回 bare 数字代码，用 fallback_ticker 补后缀。
+        - ths_ifind.company_basics: 经 _flatten_result_rows 抽出的 dict rows，
+          industry 上游返空属数据源限制。
         """
-        # Try gildata markdown table first
+        # hangseng_polysource: result.data.data.data.rows[0]
         try:
-            results_list = raw.get("result", {}).get("data", {}).get("results", [])
-            for item in results_list:
-                md = item.get("table_markdown", "")
-                if not md:
-                    continue
-                lines = [l.strip() for l in md.strip().split("\n") if l.strip()]
-                if len(lines) < 3:
-                    continue
-                # Split keeping empty fields; strip leading/trailing from | borders
-                headers = [h.strip() for h in lines[0].split("|")]
-                values = [v.strip() for v in lines[2].split("|")]
-                # Remove empty strings caused by leading/trailing |
-                if headers and not headers[0]:
-                    headers = headers[1:]
-                if headers and not headers[-1]:
-                    headers = headers[:-1]
-                if values and not values[0]:
-                    values = values[1:]
-                if values and not values[-1]:
-                    values = values[:-1]
-                # Pad values to match headers if trailing fields are empty
-                while len(values) < len(headers):
-                    values.append("")
-                row = dict(zip(headers, values[: len(headers)]))
-                ticker = row.get("股票代码", "")
-                name = row.get("股票名称", "") or row.get("中文名称", "")
+            container = raw.get("result", {}).get("data", {})
+            inner = container.get("data", {}) if isinstance(container, dict) else {}
+            payload = inner.get("data", {}) if isinstance(inner, dict) else {}
+            rows = payload.get("rows", []) if isinstance(payload, dict) else []
+            if rows and isinstance(rows[0], dict):
+                row = rows[0]
+                ticker = row.get("stockcode") or ""
+                name = row.get("chiname") or row.get("stockname") or ""
                 industry = (
-                    row.get("所属申万行业", "")
-                    or row.get("所属证监会行业", "")
-                    or row.get("所属中信行业", "")
+                    row.get("industrysw")
+                    or row.get("industryzjh")
+                    or row.get("industryzx")
+                    or row.get("industryjy")
+                    or ""
                 )
-                if ticker or name:
-                    return {"ticker": ticker, "name": name, "industry": industry}
+                if name or industry:
+                    # hangseng 返回 bare 6 位 stockcode（如 "600519"），用 fallback
+                    # 已 normalize 过的 ticker（"600519.SH"）覆盖以保持下游格式一致
+                    return {
+                        "ticker": fallback_ticker or ticker,
+                        "name": name,
+                        "industry": industry,
+                    }
         except Exception:
             pass
 
-        # Try ths_ifind dict rows
+        # ths_ifind.company_basics: flat dict rows
         try:
             rows = self._flatten_result_rows(raw)
             if rows:
@@ -204,6 +206,7 @@ class QVerisClient:
                         row.get("ths_thscode_stock")
                         or row.get("thscode")
                         or row.get("code")
+                        or fallback_ticker
                         or ""
                     ),
                     "name": (
