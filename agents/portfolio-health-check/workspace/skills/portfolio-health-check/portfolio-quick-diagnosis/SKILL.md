@@ -66,11 +66,10 @@ cd "$SKILL_ROOT" && python scripts/portfolio-health-check/qveris_client.py ident
 cd "$SKILL_ROOT" && python scripts/portfolio-health-check/qveris_client.py identify "贵州茅台" "中国平安" "沪深300ETF"
 ```
 
-`identify` 命令会依次调用三个工具：
+`identify` 命令会按优先级尝试候选工具，第一个成功的就用：
 
-1. `ths_ifind.code_converter.v1` — 名称↔代码互查（精确匹配优先，失败后自动回退模糊匹配）
-2. `ths_ifind.company_basics.v1` — 获取公司全称、主营业务、产品、概念标签
-3. `mcp_gildata.stockbelongindustry.v1` — 获取申万行业分类（仅个股，ETF/基金类自动跳过）
+1. `hangseng_polysource.stock.basicCorpInfo.retrieve.v2` — 主候选，返回公司全称、申万/证监会/中信行业分类、注册地、主营、概念板块等完整字段
+2. `ths_ifind.company_basics.v1` — fallback，补 name；industry 字段上游返空属数据源限制
 
 支持的输入格式：
 - 公司名称：`"贵州茅台"`、`"中国平安"`

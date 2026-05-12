@@ -82,119 +82,121 @@ class QVerisClient:
         url = f"{self.config.base_url}/search"
         return self._post_json(url, payload)
 
+    @staticmethod
+    def _normalize_cn_code(identifier: str) -> str:
+        # 上游 ths_ifind / cn_financial_pro 的 company_basics 端点对裸 6 位代码
+        # 返回字段全空，必须带交易所后缀（.SH/.SZ/.BJ）；这里按沪深 A 股编码
+        # 段做最小推断。已带 . 的直接透传；无法判定的也透传，让上游回报错误。
+        s = identifier.strip()
+        if "." in s or not s.isdigit() or len(s) != 6:
+            return s
+        first = s[0]
+        if first in ("6", "9"):  # 沪市 A/B
+            return f"{s}.SH"
+        if first in ("0", "2", "3"):  # 深市 A/B/创业板
+            return f"{s}.SZ"
+        if first in ("4", "8"):  # 北交所
+            return f"{s}.BJ"
+        return s
+
     def lookup_security_profile(
         self, identifier: str, limit: int = 5, session_id: str = ""
     ) -> Dict[str, Any]:
-        # 单次搜索覆盖代码转换、公司信息和行业分类。
-        query = f"stock code company profile industry {identifier}"
-        search_result = self.search_tools(query, limit=limit, session_id=session_id)
-
-        tools_found = []
-        for tool in search_result.get("results", []):
-            tools_found.append(
-                {
-                    "tool_id": tool.get("tool_id", ""),
-                    "name": tool.get("name", ""),
-                    "description": tool.get("description", "")[:120],
-                }
-            )
-
-        # Try to auto-run company info tool for actual data
+        # 不再用 /search 做 discover-gate（语义匹配脆弱，常把可用工具误判为不存在）；
+        # 候选工具是硬编码列表，直接逐个 execute，第一个成功的就用。
+        # 在函数开头统一 strip，防止 CLI 粘贴 / 用户输入的尾空格漏到下游 tool 参数里。
+        del limit  # 显式标记忽略以便静态检查
+        identifier = identifier.strip()
+        normalized = self._normalize_cn_code(identifier)
         profile_data = None
-        search_id = search_result.get("search_id", "")
+        # mcp_gildata 整个 provider 已下线，改用 hangseng_polysource.basicCorpInfo.retrieve
+        # 作为主候选——80% 成功率，返回 chiname / stockname / industrysw / industryzjh /
+        # industryzx 等完整字段，industry 不再空。ths_ifind.company_basics 留作 fallback
+        # （只补 name；industry 字段上游返空属数据源限制）。
         _CANDIDATE_TOOLS = [
-            ("mcp_gildata.companybasicinfo.v1", {"query": identifier}),
-            ("ths_ifind.company_basics.v1", {"codes": identifier}),
+            (
+                "hangseng_polysource.stock.basicCorpInfo.retrieve.v2.d7c68583",
+                {"StockObject": [normalized], "pageNo": 1, "pageSize": 10},
+            ),
+            ("ths_ifind.company_basics.v1", {"codes": normalized}),
         ]
         for target_tool_id, params in _CANDIDATE_TOOLS:
             if profile_data is not None:
                 break
-            matched = any(
-                t.get("tool_id") == target_tool_id
-                for t in search_result.get("results", [])
-            )
-            if not (matched and search_id):
-                continue
             try:
                 run_result = self._run_tool(
                     tool_id=target_tool_id,
-                    search_id=search_id,
                     parameters=params,
                     session_id=session_id,
                 )
-                profile_data = self._extract_profile_from_result(run_result)
+                profile_data = self._extract_profile_from_result(
+                    run_result, fallback_ticker=normalized
+                )
             except Exception:
                 pass  # Try next candidate or fallback
 
         return {
             "identifier": identifier,
             "profile": profile_data,
-            "tools_found": tools_found[:5],
+            "tools_found": [],
         }
 
     def _run_tool(
         self,
         tool_id: str,
-        search_id: str,
         parameters: Dict[str, Any],
         session_id: str = "",
     ) -> Dict[str, Any]:
         """Thin wrapper around execute_tool for lookup_security_profile."""
         return self.execute_tool(
             tool_id=tool_id,
-            search_id=search_id,
             parameters=parameters,
             session_id=session_id,
         )
 
     def _extract_profile_from_result(
-        self, raw: Dict[str, Any]
+        self,
+        raw: Dict[str, Any],
+        fallback_ticker: str = "",
     ) -> Optional[Dict[str, str]]:
         """Extract ticker/name/industry from tool execution result.
 
-        Handles two formats:
-        - gildata: markdown table in result.data.results[].table_markdown
-        - ths_ifind: dict rows via _flatten_result_rows
+        Supports two payload shapes:
+        - hangseng_polysource.basicCorpInfo.retrieve: 4-level nested wrapper
+          (result.data.data.data.rows[0]) with chiname/stockcode/industrysw 等
+          字段；ticker 返回 bare 数字代码，用 fallback_ticker 补后缀。
+        - ths_ifind.company_basics: 经 _flatten_result_rows 抽出的 dict rows，
+          industry 上游返空属数据源限制。
         """
-        # Try gildata markdown table first
+        # hangseng_polysource: result.data.data.data.rows[0]
         try:
-            results_list = raw.get("result", {}).get("data", {}).get("results", [])
-            for item in results_list:
-                md = item.get("table_markdown", "")
-                if not md:
-                    continue
-                lines = [l.strip() for l in md.strip().split("\n") if l.strip()]
-                if len(lines) < 3:
-                    continue
-                # Split keeping empty fields; strip leading/trailing from | borders
-                headers = [h.strip() for h in lines[0].split("|")]
-                values = [v.strip() for v in lines[2].split("|")]
-                # Remove empty strings caused by leading/trailing |
-                if headers and not headers[0]:
-                    headers = headers[1:]
-                if headers and not headers[-1]:
-                    headers = headers[:-1]
-                if values and not values[0]:
-                    values = values[1:]
-                if values and not values[-1]:
-                    values = values[:-1]
-                # Pad values to match headers if trailing fields are empty
-                while len(values) < len(headers):
-                    values.append("")
-                row = dict(zip(headers, values[: len(headers)]))
-                ticker = row.get("股票代码", "")
-                name = row.get("股票名称", "") or row.get("中文名称", "")
+            container = raw.get("result", {}).get("data", {})
+            inner = container.get("data", {}) if isinstance(container, dict) else {}
+            payload = inner.get("data", {}) if isinstance(inner, dict) else {}
+            rows = payload.get("rows", []) if isinstance(payload, dict) else []
+            if rows and isinstance(rows[0], dict):
+                row = rows[0]
+                ticker = row.get("stockcode") or ""
+                name = row.get("chiname") or row.get("stockname") or ""
                 industry = (
-                    row.get("所属申万行业", "")
-                    or row.get("所属证监会行业", "")
-                    or row.get("所属中信行业", "")
+                    row.get("industrysw")
+                    or row.get("industryzjh")
+                    or row.get("industryzx")
+                    or row.get("industryjy")
+                    or ""
                 )
-                if ticker or name:
-                    return {"ticker": ticker, "name": name, "industry": industry}
+                if name or industry:
+                    # hangseng 返回 bare 6 位 stockcode（如 "600519"），用 fallback
+                    # 已 normalize 过的 ticker（"600519.SH"）覆盖以保持下游格式一致
+                    return {
+                        "ticker": fallback_ticker or ticker,
+                        "name": name,
+                        "industry": industry,
+                    }
         except Exception:
             pass
 
-        # Try ths_ifind dict rows
+        # ths_ifind.company_basics: flat dict rows
         try:
             rows = self._flatten_result_rows(raw)
             if rows:
@@ -204,6 +206,7 @@ class QVerisClient:
                         row.get("ths_thscode_stock")
                         or row.get("thscode")
                         or row.get("code")
+                        or fallback_ticker
                         or ""
                     ),
                     "name": (
@@ -591,15 +594,12 @@ class QVerisClient:
         limit: int = 10,
         max_response_size: int = 102400,
     ) -> Dict[str, Any]:
-        search_result = self.search_tools(query, limit=limit, session_id=session_id)
-        matched = any(
-            tool.get("tool_id") == tool_id for tool in search_result.get("results", [])
-        )
-        if not matched:
-            raise RuntimeError(f"Tool {tool_id} not found for query: {query}")
+        # `query` 保留入参用于向后兼容，但不再用作 discover-gate。
+        # 直接走 execute；broker 不需要 search_id，且老 discover 语义
+        # 匹配脆弱，常把可用 tool 误判为下线。
+        del query, limit  # 显式标记忽略以便静态检查
         return self.execute_tool(
             tool_id=tool_id,
-            search_id=search_result["search_id"],
             parameters=parameters,
             session_id=session_id,
             max_response_size=max_response_size,
@@ -1073,7 +1073,7 @@ class QVerisClient:
             }
         )
 
-        search_cache: Dict[str, Dict[str, Any]] = {}
+        del limit  # 不再用 discover-gate，limit 入参保留只是为了签名兼容
         executed: list[Dict[str, Any]] = []
 
         for spec in datasets:
@@ -1094,38 +1094,26 @@ class QVerisClient:
                 executed.append(cached_result)
                 continue
 
-            tool_kind = spec["tool_kind"]
-            if tool_kind not in search_cache:
-                query = spec["query"]
-                search_cache[tool_kind] = self.search_tools(
-                    query, limit=limit, session_id=session_id
+            # 不再做 discover-gate（语义 query 命中率不稳定），直接 execute；
+            # 真正的失败信号由 broker 返回 status_code/error 暴露。单条失败必须
+            # 隔离到本 spec 范围内——保留旧逻辑的 partial-success 语义，让后续
+            # dataset 仍能跑完。
+            try:
+                payload = self.execute_tool(
+                    tool_id=spec["tool_id"],
+                    parameters=spec["parameters"],
+                    session_id=session_id,
                 )
-
-            search_result = search_cache[tool_kind]
-            chosen = None
-            for tool in search_result.get("results", []):
-                if tool.get("tool_id") == spec["tool_id"]:
-                    chosen = tool
-                    break
-
-            if not chosen:
+            except Exception as exc:  # noqa: BLE001 — 隔离单条 dataset 失败
                 executed.append(
                     {
                         "dataset_id": spec["dataset_id"],
                         "tool_id": spec["tool_id"],
                         "parameters": spec["parameters"],
-                        "error": "matching tool not found in search results",
-                        "search_result": search_result,
+                        "error": repr(exc),
                     }
                 )
                 continue
-
-            payload = self.execute_tool(
-                tool_id=spec["tool_id"],
-                search_id=search_result["search_id"],
-                parameters=spec["parameters"],
-                session_id=session_id,
-            )
 
             full_content = self._download_full_content(payload)
             if full_content is not None and isinstance(payload.get("result"), dict):
@@ -1143,7 +1131,6 @@ class QVerisClient:
                 {
                     "format": self.ARTIFACT_FORMAT,
                     "spec": spec,
-                    "search_id": search_result["search_id"],
                     "tool_id": spec["tool_id"],
                     "parameters": spec["parameters"],
                     "rows": normalized_series,
@@ -1156,7 +1143,6 @@ class QVerisClient:
                     "dataset_id": spec["dataset_id"],
                     "tool_id": spec["tool_id"],
                     "parameters": spec["parameters"],
-                    "search_id": search_result["search_id"],
                     "artifact_path": artifact_path,
                     "summaries": summaries,
                     "series_count": len(normalized_series),
@@ -1238,17 +1224,26 @@ class QVerisClient:
     def execute_tool(
         self,
         tool_id: str,
-        search_id: str,
+        *,
         parameters: Dict[str, Any],
+        search_id: str = "",
         session_id: str = "",
         max_response_size: int = 102400,
     ) -> Dict[str, Any]:
-        # 根据 search 返回的 tool_id 和 search_id，调用真正的执行接口。
+        # Qveris broker 现已不再强制 search_id —— 老逻辑里那次 /search 是
+        # discover-then-execute 的遗留约束，但 discover 语义匹配很脆弱，
+        # 一旦目标 tool 跌出 top-N 就 false-negative，把可用工具误判为不存在。
+        # 直接走 execute 端点，broker 自己根据 tool_id 路由即可。
+        # 参数顺序之前是 (tool_id, search_id, parameters, ...)，新签名调换
+        # 了 search_id 和 parameters 的位置；强制 keyword-only 是为了让
+        # 仍按老顺序传位置参数的外部调用方拿到 TypeError 而不是把 search_id
+        # 字符串塞进 parameters 后回个畸形 payload。
         payload: Dict[str, Any] = {
-            "search_id": search_id,
             "parameters": parameters,
             "max_response_size": max_response_size,
         }
+        if search_id:
+            payload["search_id"] = search_id
         if session_id:
             payload["session_id"] = session_id
 
@@ -1336,9 +1331,14 @@ def main() -> None:
 
     execute_parser = subparsers.add_parser("execute", help="Execute a QVeris tool")
     execute_parser.add_argument("tool_id", help="Tool id from search results")
-    execute_parser.add_argument("search_id", help="Search id from the search call")
     execute_parser.add_argument(
         "parameters", nargs="?", help="JSON string of tool parameters"
+    )
+    execute_parser.add_argument(
+        "--search-id",
+        dest="search_id",
+        default="",
+        help="Optional search id (broker no longer requires it)",
     )
     execute_parser.add_argument(
         "--parameters-json",

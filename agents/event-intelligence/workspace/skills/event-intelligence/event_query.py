@@ -17,15 +17,15 @@ from qveris_client import QVerisClient
 DATE_FMT = "%Y-%m-%d %H:%M:%S"
 
 # Qveris 上 deepseekdata 事件语义检索工具的固定 ID。
-# 若该 tool 被重命名或下线，首次 search 时会显式报错指出。
+# 直接走 execute，不再经 /search 取 search_id —— 实测 Qveris broker 已
+# 不再依赖 search_id；老逻辑里那次 discover 反而成了脆弱点：query 措辞
+# 略改就会让目标 tool 跌出 top-N，导致 false-negative 报"工具下线"。
 QVERIS_TOOL_ID = "deepseekdata.event_analysis.events.list.v1.32c03d20"
 
 # 实测单响应 ~155KB，设 300KB 留 ~2x 余量防 schema 扩展。
 _MAX_RESP = 300_000
 
 _client_singleton: Optional[QVerisClient] = None
-# 进程生命周期内复用 search_id；进程重启会重新获取。
-_search_id_cache: Optional[str] = None
 
 
 def _get_client() -> QVerisClient:
@@ -35,36 +35,10 @@ def _get_client() -> QVerisClient:
     return _client_singleton
 
 
-def _ensure_search_id(client: QVerisClient) -> str:
-    global _search_id_cache
-    if _search_id_cache:
-        return _search_id_cache
-    result = client.search_tools(
-        query="deepseekdata semantic event list financial industry",
-        limit=10,
-    )
-    # Qveris /search doesn't return a `success` flag — the presence of
-    # `search_id` is the only reliable success indicator. Validate shape
-    # before indexing so we emit a clear diagnostic instead of a KeyError.
-    if not isinstance(result, dict) or "search_id" not in result:
-        raise RuntimeError(
-            f"Qveris search_tools returned unexpected shape: {json.dumps(result)[:300]}"
-        )
-    tool_ids = [t.get("tool_id") for t in result.get("results", [])]
-    if QVERIS_TOOL_ID not in tool_ids:
-        raise RuntimeError(
-            f"Expected tool {QVERIS_TOOL_ID} not found in Qveris search results. "
-            f"Got: {tool_ids}. Has the tool been removed or renamed?"
-        )
-    _search_id_cache = result["search_id"]
-    return _search_id_cache
-
-
 def _request(params: dict) -> dict:
     client = _get_client()
     envelope = client.execute_tool(
         tool_id=QVERIS_TOOL_ID,
-        search_id=_ensure_search_id(client),
         parameters=params,
         max_response_size=_MAX_RESP,
     )
@@ -119,8 +93,8 @@ _BJT = timezone(timedelta(hours=8))
 
 # 去除摘要开头的"研报"/"研报指出"等前缀及紧跟的标点
 _REPORT_PREFIX_RE = re.compile(
-    r'^\s*(?:研报指出|研报认为|研报显示|研报提到|研报表示|研报)'
-    r'[，,：:；;、。\s]*'
+    r"^\s*(?:研报指出|研报认为|研报显示|研报提到|研报表示|研报)"
+    r"[，,：:；;、。\s]*"
 )
 
 
@@ -128,7 +102,7 @@ def _strip_report_prefix(text: str | None) -> str | None:
     """去除摘要文本开头的"研报指出"等冗余前缀。"""
     if not text:
         return text
-    return _REPORT_PREFIX_RE.sub('', text, count=1)
+    return _REPORT_PREFIX_RE.sub("", text, count=1)
 
 
 def _format_ts(ts) -> str | None:
@@ -178,14 +152,18 @@ def search_events(
         core_logic = meta.get("core_logic_output", {})
         ic_report = meta.get("ic_report_v10_output", {})
 
-        events.append({
-            "eventId": item.get("eventId"),
-            "compliantTitle": item.get("compliantTitle"),
-            "eventPublishDate": _format_ts(item.get("eventPublishDate")),
-            "signalLevel": _safe_get(core_logic, "signal_hint", "level"),
-            "original_summary": _strip_report_prefix(core_logic.get("original_summary")),
-            "summary": _strip_report_prefix(ic_report.get("summary")),
-        })
+        events.append(
+            {
+                "eventId": item.get("eventId"),
+                "compliantTitle": item.get("compliantTitle"),
+                "eventPublishDate": _format_ts(item.get("eventPublishDate")),
+                "signalLevel": _safe_get(core_logic, "signal_hint", "level"),
+                "original_summary": _strip_report_prefix(
+                    core_logic.get("original_summary")
+                ),
+                "summary": _strip_report_prefix(ic_report.get("summary")),
+            }
+        )
 
     total = data.get("total", 0)
 
