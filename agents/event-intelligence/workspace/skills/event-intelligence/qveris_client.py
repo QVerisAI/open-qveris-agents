@@ -7,9 +7,10 @@ made and should NOT be reverted when syncing:
 
 - `QVerisConfig` drops the portfolio-specific `state_file` field.
 - `search_tools` / `execute_tool` drop the unused `session_id` parameter.
-- `execute_tool` makes `search_id` optional (Qveris broker no longer
-  requires it). The portfolio copy still threads it as a required positional
-  arg — this divergence is intentional.
+- Both this and the portfolio copy now treat `search_id` as optional and
+  enforce keyword-only call style (Qveris broker no longer requires it,
+  and keyword-only prevents positional-call drift). Keep aligned on
+  the next sync.
 - `download_full_content` is promoted from private `_download_full_content`
   to public, and now raises on failure (the portfolio copy swallowed errors
   and returned None — that behavior is incorrect for this skill).
@@ -95,6 +96,7 @@ class QVerisClient:
     def execute_tool(
         self,
         tool_id: str,
+        *,
         parameters: Dict[str, Any],
         max_response_size: int = 102400,
         search_id: Optional[str] = None,

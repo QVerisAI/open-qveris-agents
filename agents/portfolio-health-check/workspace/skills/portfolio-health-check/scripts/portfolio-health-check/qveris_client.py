@@ -1088,12 +1088,25 @@ class QVerisClient:
                 continue
 
             # 不再做 discover-gate（语义 query 命中率不稳定），直接 execute；
-            # 真正的失败信号由 broker 返回 status_code/error 暴露。
-            payload = self.execute_tool(
-                tool_id=spec["tool_id"],
-                parameters=spec["parameters"],
-                session_id=session_id,
-            )
+            # 真正的失败信号由 broker 返回 status_code/error 暴露。单条失败必须
+            # 隔离到本 spec 范围内——保留旧逻辑的 partial-success 语义，让后续
+            # dataset 仍能跑完。
+            try:
+                payload = self.execute_tool(
+                    tool_id=spec["tool_id"],
+                    parameters=spec["parameters"],
+                    session_id=session_id,
+                )
+            except Exception as exc:  # noqa: BLE001 — 隔离单条 dataset 失败
+                executed.append(
+                    {
+                        "dataset_id": spec["dataset_id"],
+                        "tool_id": spec["tool_id"],
+                        "parameters": spec["parameters"],
+                        "error": repr(exc),
+                    }
+                )
+                continue
 
             full_content = self._download_full_content(payload)
             if full_content is not None and isinstance(payload.get("result"), dict):
@@ -1204,6 +1217,7 @@ class QVerisClient:
     def execute_tool(
         self,
         tool_id: str,
+        *,
         parameters: Dict[str, Any],
         search_id: str = "",
         session_id: str = "",
@@ -1213,6 +1227,10 @@ class QVerisClient:
         # discover-then-execute 的遗留约束，但 discover 语义匹配很脆弱，
         # 一旦目标 tool 跌出 top-N 就 false-negative，把可用工具误判为不存在。
         # 直接走 execute 端点，broker 自己根据 tool_id 路由即可。
+        # 参数顺序之前是 (tool_id, search_id, parameters, ...)，新签名调换
+        # 了 search_id 和 parameters 的位置；强制 keyword-only 是为了让
+        # 仍按老顺序传位置参数的外部调用方拿到 TypeError 而不是把 search_id
+        # 字符串塞进 parameters 后回个畸形 payload。
         payload: Dict[str, Any] = {
             "parameters": parameters,
             "max_response_size": max_response_size,
