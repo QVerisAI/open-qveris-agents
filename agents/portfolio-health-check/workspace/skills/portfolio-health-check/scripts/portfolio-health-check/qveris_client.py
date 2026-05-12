@@ -105,6 +105,10 @@ class QVerisClient:
         # 不再用 /search 做 discover-gate（语义匹配脆弱，常把可用工具误判为不存在）；
         # 候选工具是硬编码列表，直接逐个 execute，第一个成功的就用。
         del limit  # 显式标记忽略以便静态检查
+        # 在函数开头统一 strip，避免 mcp_gildata 收到 "600519 " 这种带空格的 query
+        # 后 404 / 模糊匹配；_normalize_cn_code 内部只对纯数字 6 位分支 strip，
+        # 不能覆盖 mcp_gildata 这条候选。
+        identifier = identifier.strip()
         normalized = self._normalize_cn_code(identifier)
         profile_data = None
         _CANDIDATE_TOOLS = [

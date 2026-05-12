@@ -108,3 +108,35 @@ class TestExecuteToolPayloadShape:
         # rather than silently sending the search_id string into parameters.
         with pytest.raises(TypeError):
             c.execute_tool("tool.v1", "stale-search-id", {"codes": "X"})
+
+
+class TestLookupSecurityProfileStripsIdentifier:
+    """Identifier 在函数顶部 strip 一次，覆盖所有候选 tool 的参数路径。
+    `_normalize_cn_code` 内部只在纯数字 6 位分支 strip，不能覆盖 mcp_gildata
+    的 {"query": identifier} 这条候选——CLI 粘贴 / 用户输入常带尾空格。
+    """
+
+    def test_identifier_stripped_before_passing_to_all_candidates(self, monkeypatch):
+        c = QVerisClient()
+        captured_params: list[dict] = []
+
+        def fake_run_tool(tool_id, parameters, session_id=""):
+            captured_params.append({"tool_id": tool_id, "parameters": parameters})
+            # 返回空 result 让 _extract_profile_from_result 返回 None，
+            # 这样循环会尝试所有候选，我们能验证每条都拿到 stripped identifier
+            return {"result": {"status_code": 200, "data": {}}}
+
+        monkeypatch.setattr(c, "_run_tool", fake_run_tool)
+        c.lookup_security_profile("  600519  ")
+
+        # ths_ifind 走 normalize 路径 → "600519.SH"
+        ths = next(p for p in captured_params if p["tool_id"].startswith("ths_ifind"))
+        assert ths["parameters"]["codes"] == "600519.SH"
+        assert " " not in ths["parameters"]["codes"]
+
+        # mcp_gildata 拿 raw identifier，必须已 strip
+        gildata = next(
+            p for p in captured_params if p["tool_id"].startswith("mcp_gildata")
+        )
+        assert gildata["parameters"]["query"] == "600519"
+        assert " " not in gildata["parameters"]["query"]
