@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 
@@ -21,12 +22,16 @@ def get_assets_dir(start: Path | None = None) -> Path:
 
 
 def safe_input_roots(start: Path | None = None) -> list[Path]:
-    """外部输入路径的允许根：CWD + 脚本目录 + （若能定位）sample assets 目录。
+    """外部输入路径的允许根：CWD + 脚本目录 + 系统临时目录 +（若能定位）sample assets 目录。
 
-    assets 位于脚本目录的祖先层（Interview/portfolio-health-check/assets），
-    因此必须显式纳入，否则合法数据加载会被 safe_resolve 误判越界。
+    assets 位于脚本目录的祖先层（Interview/portfolio-health-check/assets），必须显式纳入。
+    临时目录也必须纳入：agent skill 按约定把 payload/输出写在 /tmp（见 deep-diagnosis
+    SKILL.md），否则 CLI 会把合法调用判为越界。/tmp 是工作区、非敏感，且纳入后仍拦得住
+    逃逸到 /etc 等（../ 解析后越出全部根即拒）。
     """
     roots: list[Path] = [Path.cwd(), Path(__file__).resolve().parent]
+    for tmp in {tempfile.gettempdir(), "/tmp"}:
+        roots.append(Path(tmp))
     try:
         roots.append(get_assets_dir(start))
     except FileNotFoundError:
