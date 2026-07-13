@@ -17,13 +17,13 @@ import sys
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from _security import (
     UnsafeUrlError,
     safe_filename_segment,
+    safe_urlopen,
     scrub_error,
-    validate_url,
 )
 
 from date_utils import shift_months, shift_years, format_ymd
@@ -64,17 +64,14 @@ class QVerisClient:
 
     def _post_json(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         # 所有接口请求都统一走这里，集中处理编码、超时和异常转换。
-        try:
-            # base_url 由运维配置，做轻量校验（scheme/端口/credentials/私网 IP 字面量），
-            # 不做 DNS 解析以免离线/DNS 抖动时误伤合法端点。
-            validate_url(url, allow_dns=False)
-        except UnsafeUrlError as exc:
-            raise RuntimeError(f"QVeris 目标 URL 不安全: {scrub_error(exc)}") from exc
         data = json.dumps(payload).encode("utf-8")
         request = Request(url, data=data, headers=self.headers, method="POST")
         try:
-            with urlopen(request, timeout=self.config.timeout) as response:
+            # safe_urlopen 校验 URL 及每一跳重定向；base_url 运维可信，allow_dns=False 避免 DNS 抖动误伤
+            with safe_urlopen(request, timeout=self.config.timeout, allow_dns=False) as response:
                 raw = response.read().decode("utf-8")
+        except UnsafeUrlError as exc:
+            raise RuntimeError(f"QVeris 目标 URL 不安全: {scrub_error(exc)}") from exc
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
             raise RuntimeError(
@@ -807,17 +804,17 @@ class QVerisClient:
         if not full_url:
             return None
         try:
-            # URL 来自上游响应、可被篡改（SSRF 主攻击面），做完整校验含 DNS 解析后逐 IP 复核。
-            validate_url(full_url, allow_dns=True)
+            # URL 来自上游响应、可被篡改（SSRF 主攻击面）；safe_urlopen 校验 URL 及每一跳重定向
+            raw = safe_urlopen(
+                full_url, timeout=self.config.timeout, allow_dns=True
+            ).read().decode("utf-8")
+            return json.loads(raw)
         except UnsafeUrlError as exc:
-            # 显式记录被拒的不安全下载，不静默当作普通 miss。
+            # 显式记录被拒的不安全下载，避免静默吞掉
             sys.stderr.write(
                 f"[security] 拒绝下载不安全的 full_content_file_url: {scrub_error(exc)}\n"
             )
             return self._fallback_truncated(container)
-        try:
-            raw = urlopen(full_url, timeout=self.config.timeout).read().decode("utf-8")
-            return json.loads(raw)
         except Exception:
             return self._fallback_truncated(container)
 

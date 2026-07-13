@@ -276,7 +276,7 @@ def generate_html(result, output_path):
     mxse = max(se.values()) if se else 1
     for k, v in sorted(se.items(), key=lambda x: -x[1]):
         w = v / mxse * 100
-        sebars += f'<div class="sb"><span class="sl">{cn_sec(k)}</span><div class="sw"><div class="sf" style="width:{w:.0f}%"></div></div><span class="sv">{v * 100:.0f}%</span></div>\n'
+        sebars += f'<div class="sb"><span class="sl">{_esc(cn_sec(k))}</span><div class="sw"><div class="sf" style="width:{w:.0f}%"></div></div><span class="sv">{v * 100:.0f}%</span></div>\n'
 
     # Flags
     fhtml = ""

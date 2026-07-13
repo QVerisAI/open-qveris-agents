@@ -28,7 +28,7 @@ _TRUSTED_BROWSER_ROOTS = (
     Path(r"C:\Program Files (x86)"),
     Path("/Applications"),
     Path("/opt"),
-    Path("/usr"),
+    Path("/usr/bin"),  # 不含 /usr/local/bin（Homebrew 普通用户可写，可能被劫持）
 )
 _ALLOWED_BROWSER_NAME = re.compile(
     r"^(google-chrome(-stable)?|chromium(-browser)?|chrome|msedge|microsoft-edge)(\.exe)?$",
@@ -75,7 +75,7 @@ def convert_html_to_pdf(
 ) -> Path:
     """Render a local HTML file to PDF via headless Chrome/Edge.
 
-    浏览器可执行文件只能由 find_pdf_browser() 定位；不再接受外部传入路径（已消除 RCE 攻击面）。
+    浏览器路径只由 find_pdf_browser() 定位，不接受外部传入（防 RCE）。
     """
     html_file = Path(html_path).resolve()
     pdf_file = Path(pdf_path).resolve()

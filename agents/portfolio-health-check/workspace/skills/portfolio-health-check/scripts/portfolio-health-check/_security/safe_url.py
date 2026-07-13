@@ -11,8 +11,9 @@ from __future__ import annotations
 import ipaddress
 import socket
 from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-__all__ = ["UnsafeUrlError", "validate_url"]
+__all__ = ["UnsafeUrlError", "validate_url", "safe_urlopen"]
 
 
 class UnsafeUrlError(ValueError):
@@ -121,3 +122,22 @@ def validate_url(url: str, *, allow_dns: bool = True) -> str:
         for info in infos:
             _reject_ip(info[4][0])
     return url
+
+
+class _ValidatingRedirectHandler(HTTPRedirectHandler):
+    """跟随 3xx 前对每一跳 Location 重跑 validate_url，堵住 302→内网 的 SSRF 绕过。"""
+
+    def __init__(self, allow_dns: bool = True) -> None:
+        self._allow_dns = allow_dns
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        validate_url(newurl, allow_dns=self._allow_dns)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def safe_urlopen(url, *, timeout, allow_dns: bool = True):
+    """校验 URL（含每一跳重定向）后打开。url 可为字符串或已构造的 Request。"""
+    target = url.full_url if isinstance(url, Request) else url
+    validate_url(target, allow_dns=allow_dns)
+    opener = build_opener(_ValidatingRedirectHandler(allow_dns))
+    return opener.open(url, timeout=timeout)

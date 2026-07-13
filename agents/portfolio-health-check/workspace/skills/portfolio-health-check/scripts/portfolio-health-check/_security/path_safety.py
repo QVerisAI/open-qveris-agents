@@ -2,7 +2,7 @@
 
 所有由外部输入决定的文件路径都必须先过 safe_resolve()，再用返回的
 已验证路径读写；需要 open() 的场景用 open_safely()（os.open + O_NOFOLLOW）。
-防护面：NFKC 归一化、拒绝控制字符/NUL、逐层 lstat 拒符号链接、
+防护面：NFKC 归一化、拒绝控制字符/NUL、root 之下逐层 lstat 拒符号链接、
 resolve 后 realpath 必须落在 allowed_roots 内（自然拦截 ../ 与越界绝对路径）。
 """
 
@@ -110,11 +110,14 @@ def open_safely(
     allowed_roots: Iterable[str | os.PathLike],
     encoding: str | None = "utf-8",
 ) -> IO:
-    """safe_resolve 后用 os.open + O_NOFOLLOW 打开，堵住 resolve 与 open 之间的 TOCTOU 窗口。"""
+    """safe_resolve 后用 os.open + O_NOFOLLOW 打开，收窄 resolve 与 open 之间的 TOCTOU 窗口。
+
+    O_NOFOLLOW 仅保护路径最后一段，中间目录组件在 resolve 后被换成软链仍有理论残余风险。
+    """
     writing = any(c in mode for c in ("w", "a", "x", "+"))
     resolved = safe_resolve(raw, allowed_roots=allowed_roots, must_exist=not writing)
     flags = _mode_to_flags(mode)
-    if hasattr(os, "O_NOFOLLOW"):  # POSIX：symlink 命中 open 触发 ELOOP；Windows 无此常量时降级为 lstat 前置校验
+    if hasattr(os, "O_NOFOLLOW"):  # POSIX：symlink 命中 open 触发 ELOOP；Windows 无此常量，仅靠 safe_resolve 的 lstat 前置校验兜底
         flags |= os.O_NOFOLLOW
     fd = os.open(str(resolved), flags, 0o600)
     if "b" in mode:

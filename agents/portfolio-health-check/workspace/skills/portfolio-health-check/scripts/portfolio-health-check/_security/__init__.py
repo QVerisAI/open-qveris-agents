@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from .path_safety import UnsafePathError, open_safely, safe_resolve
-from .safe_url import UnsafeUrlError, validate_url
+from .safe_url import UnsafeUrlError, safe_urlopen, validate_url
 from .scrub import safe_filename_segment, scrub_error, scrub_secret
 
 __all__ = [
@@ -15,6 +15,7 @@ __all__ = [
     "UnsafeUrlError",
     "open_safely",
     "safe_resolve",
+    "safe_urlopen",
     "validate_url",
     "safe_filename_segment",
     "scrub_error",
