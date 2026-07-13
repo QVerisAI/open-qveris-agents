@@ -805,9 +805,8 @@ class QVerisClient:
             return None
         try:
             # URL 来自上游响应、可被篡改（SSRF 主攻击面）；safe_urlopen 校验 URL 及每一跳重定向
-            raw = safe_urlopen(
-                full_url, timeout=self.config.timeout, allow_dns=True
-            ).read().decode("utf-8")
+            with safe_urlopen(full_url, timeout=self.config.timeout, allow_dns=True) as resp:
+                raw = resp.read().decode("utf-8")
             return json.loads(raw)
         except UnsafeUrlError as exc:
             # 显式记录被拒的不安全下载，避免静默吞掉
