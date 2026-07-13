@@ -39,15 +39,22 @@ def _resolved_roots(allowed_roots: Iterable[str | os.PathLike]) -> list[Path]:
 def _reject_symlinks_below_root(candidate_abs: Path, resolved_root: Path) -> None:
     """只检查 root 之下每一层是否符号链接（root 内软链指向 root 外是主要攻击面）。
 
-    root 自身及其祖先可能是系统软链（macOS 的 /var、/etc），不在检查范围。
-    candidate 若非文本上落在 root 内（经软链根前缀访问），交给 resolve 后的越界检查兜底。
+    root 自身及其祖先可能是系统软链（macOS 的 /var、/tmp），不在检查范围。先逐级解析
+    candidate 的祖先，找到 resolve() 后等于 resolved_root 的基准祖先，再对其下逐层校验；
+    这样即便 root 经软链前缀访问也不会漏掉 prewalk。越界逃逸仍由 resolve 后的越界检查兜底。
     """
-    try:
-        rel = candidate_abs.relative_to(resolved_root)
-    except ValueError:
+    base_ancestor = None
+    for ancestor in (candidate_abs, *candidate_abs.parents):
+        try:
+            if ancestor.resolve() == resolved_root:
+                base_ancestor = ancestor
+                break
+        except OSError:
+            continue
+    if base_ancestor is None:
         return
-    cur = resolved_root
-    for part in rel.parts:
+    cur = base_ancestor
+    for part in candidate_abs.relative_to(base_ancestor).parts:
         cur = cur / part
         if cur.is_symlink():  # lstat 语义，不存在则 False
             raise UnsafePathError(f"路径含符号链接: {cur}")
@@ -87,19 +94,19 @@ def safe_resolve(
 def _mode_to_flags(mode: str) -> int:
     if "b" in mode:
         mode = mode.replace("b", "")
-    flags = 0
+    # 读写位与 创建/追加/独占位 解耦，避免 a+/x+ 命中 + 分支后丢失 O_CREAT/O_APPEND/O_EXCL
     if "+" in mode:
-        flags |= os.O_RDWR
+        flags = os.O_RDWR
     elif "r" in mode:
-        flags |= os.O_RDONLY
-    elif "w" in mode:
-        flags |= os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-    elif "a" in mode:
-        flags |= os.O_WRONLY | os.O_CREAT | os.O_APPEND
-    elif "x" in mode:
-        flags |= os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if "w" in mode and "+" in mode:
+        flags = os.O_RDONLY
+    else:
+        flags = os.O_WRONLY
+    if "w" in mode:
         flags |= os.O_CREAT | os.O_TRUNC
+    elif "a" in mode:
+        flags |= os.O_CREAT | os.O_APPEND
+    elif "x" in mode:
+        flags |= os.O_CREAT | os.O_EXCL
     return flags
 
 

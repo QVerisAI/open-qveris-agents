@@ -93,6 +93,26 @@ def test_open_safely_blocks_symlink_escape(tmp_path):
         safe_resolve(str(link), allowed_roots=[root])
 
 
+def test_prewalk_rejects_in_root_symlink(tmp_path):
+    # 即便软链目标在 root 内、且 root 经软链前缀访问（macOS tmp 在 /var 下），prewalk 也要拦下
+    target = tmp_path / "real.txt"
+    target.write_text("x", encoding="utf-8")
+    link = tmp_path / "link.txt"
+    link.symlink_to(target)
+    with pytest.raises(UnsafePathError):
+        safe_resolve(str(link), allowed_roots=[tmp_path])
+
+
+def test_mode_to_flags_combined_modes():
+    # a+/x+/w+ 不能因命中 + 分支而丢失 O_CREAT/O_APPEND/O_EXCL
+    from _security.path_safety import _mode_to_flags
+
+    assert _mode_to_flags("a+") & os.O_CREAT and _mode_to_flags("a+") & os.O_APPEND
+    assert _mode_to_flags("x+") & os.O_CREAT and _mode_to_flags("x+") & os.O_EXCL
+    assert _mode_to_flags("w+") & os.O_CREAT and _mode_to_flags("w+") & os.O_TRUNC
+    assert _mode_to_flags("r") == os.O_RDONLY
+
+
 # ---------------- 脱敏 / 文件名净化 (#11d/#12) ----------------
 
 def test_scrub_secret_redacts_token_and_key():
