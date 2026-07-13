@@ -16,7 +16,15 @@ from typing import Any, Dict, Iterable, Optional
 import sys
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+from _security import (
+    UnsafeUrlError,
+    safe_filename_segment,
+    scrub_error,
+    validate_url,
+)
 
 from date_utils import shift_months, shift_years, format_ymd
 
@@ -56,6 +64,12 @@ class QVerisClient:
 
     def _post_json(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         # 所有接口请求都统一走这里，集中处理编码、超时和异常转换。
+        try:
+            # base_url 由运维配置，做轻量校验（scheme/端口/credentials/私网 IP 字面量），
+            # 不做 DNS 解析以免离线/DNS 抖动时误伤合法端点。
+            validate_url(url, allow_dns=False)
+        except UnsafeUrlError as exc:
+            raise RuntimeError(f"QVeris 目标 URL 不安全: {scrub_error(exc)}") from exc
         data = json.dumps(payload).encode("utf-8")
         request = Request(url, data=data, headers=self.headers, method="POST")
         try:
@@ -64,10 +78,12 @@ class QVerisClient:
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
             raise RuntimeError(
-                f"QVeris HTTP error {exc.code}: {body or exc.reason}"
+                f"QVeris HTTP error {exc.code}: {scrub_error(body or str(exc.reason))}"
             ) from exc
         except URLError as exc:
-            raise RuntimeError(f"QVeris request failed: {exc.reason}") from exc
+            raise RuntimeError(
+                f"QVeris request failed: {scrub_error(str(exc.reason))}"
+            ) from exc
 
         return json.loads(raw)
 
@@ -791,16 +807,29 @@ class QVerisClient:
         if not full_url:
             return None
         try:
+            # URL 来自上游响应、可被篡改（SSRF 主攻击面），做完整校验含 DNS 解析后逐 IP 复核。
+            validate_url(full_url, allow_dns=True)
+        except UnsafeUrlError as exc:
+            # 显式记录被拒的不安全下载，不静默当作普通 miss。
+            sys.stderr.write(
+                f"[security] 拒绝下载不安全的 full_content_file_url: {scrub_error(exc)}\n"
+            )
+            return self._fallback_truncated(container)
+        try:
             raw = urlopen(full_url, timeout=self.config.timeout).read().decode("utf-8")
             return json.loads(raw)
         except Exception:
-            truncated = container.get("truncated_content")
-            if isinstance(truncated, str) and truncated:
-                try:
-                    return json.loads(truncated)
-                except Exception:
-                    return None
-            return None
+            return self._fallback_truncated(container)
+
+    @staticmethod
+    def _fallback_truncated(container: Dict[str, Any]) -> Optional[Any]:
+        truncated = container.get("truncated_content")
+        if isinstance(truncated, str) and truncated:
+            try:
+                return json.loads(truncated)
+            except Exception:
+                return None
+        return None
 
     def _summarize_series(self, series: list[Dict[str, Any]]) -> Dict[str, Any]:
         # 对单条序列做轻量汇总，便于快速查看区间特征。
@@ -1077,7 +1106,10 @@ class QVerisClient:
         executed: list[Dict[str, Any]] = []
 
         for spec in datasets:
-            artifact_filename = f"{spec['dataset_id']}_{codes.replace(',', '_')}.json"
+            # 用户输入 codes 拼进文件名前必须净化，防 ../ 穿越 artifacts 目录写文件。
+            safe_dataset = safe_filename_segment(str(spec["dataset_id"]))
+            safe_codes = safe_filename_segment(codes.replace(",", "_"))
+            artifact_filename = f"{safe_dataset}_{safe_codes}.json"
             artifact_path = (
                 Path(self.config.state_file).parent / "artifacts" / artifact_filename
             )
@@ -1110,7 +1142,7 @@ class QVerisClient:
                         "dataset_id": spec["dataset_id"],
                         "tool_id": spec["tool_id"],
                         "parameters": spec["parameters"],
-                        "error": repr(exc),
+                        "error": scrub_error(exc),
                     }
                 )
                 continue
@@ -1247,7 +1279,7 @@ class QVerisClient:
         if session_id:
             payload["session_id"] = session_id
 
-        url = f"{self.config.base_url}/tools/execute?tool_id={tool_id}"
+        url = f"{self.config.base_url}/tools/execute?tool_id={quote(str(tool_id), safe='')}"
         return self._post_json(url, payload)
 
 

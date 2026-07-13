@@ -10,12 +10,15 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 import traceback
 from pathlib import Path
 from typing import Any, Mapping
 
 import pandas as pd
 
+from _security import UnsafePathError, open_safely, safe_resolve, scrub_error
+from asset_paths import safe_input_roots
 from data_loader import Holding, parse_constraints
 from diagnosis_schema import validate_diagnosis_data, DiagnosisSchemaError
 from prescription import run_prescription
@@ -198,7 +201,7 @@ def run_optimization(payload: Mapping[str, Any]) -> dict[str, Any]:
         logging.error("Optimization failed: %s\n%s", exc, traceback.format_exc())
         return {
             "status": "error",
-            "error_message": str(exc),
+            "error_message": scrub_error(exc),
             "data": None,
         }
 
@@ -321,18 +324,23 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    with open(args.diagnosis, "r", encoding="utf-8") as f:
-        diagnosis_result = json.load(f)
+    roots = safe_input_roots()
+    try:
+        with open_safely(args.diagnosis, "r", allowed_roots=roots) as f:
+            diagnosis_result = json.load(f)
 
-    if args.internal:
-        with open(args.internal, "r", encoding="utf-8") as f:
-            diagnosis_result["_internal"] = json.load(f)
+        if args.internal:
+            with open_safely(args.internal, "r", allowed_roots=roots) as f:
+                diagnosis_result["_internal"] = json.load(f)
 
-    if args.constraints_file:
-        with open(args.constraints_file, "r", encoding="utf-8") as f:
-            constraints = json.load(f)
-    else:
-        constraints = json.loads(args.constraints)
+        if args.constraints_file:
+            with open_safely(args.constraints_file, "r", allowed_roots=roots) as f:
+                constraints = json.load(f)
+        else:
+            constraints = json.loads(args.constraints)
+    except UnsafePathError as exc:
+        sys.stderr.write(f"输入路径不安全: {exc}\n")
+        raise SystemExit(2)
 
     payload = {
         "diagnosis_result": diagnosis_result,
@@ -342,9 +350,13 @@ def main() -> None:
     result = run_optimization(payload)
 
     if args.output_dir:
-        out = Path(args.output_dir)
+        try:
+            out = safe_resolve(args.output_dir, allowed_roots=roots, must_exist=False)
+        except UnsafePathError as exc:
+            sys.stderr.write(f"输出目录不安全: {exc}\n")
+            raise SystemExit(2)
         out.mkdir(parents=True, exist_ok=True)
-        with open(out / "optimization_result.json", "w", encoding="utf-8") as f:
+        with open_safely(out / "optimization_result.json", "w", allowed_roots=roots) as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
 
     print(json.dumps(result, ensure_ascii=False, indent=2))

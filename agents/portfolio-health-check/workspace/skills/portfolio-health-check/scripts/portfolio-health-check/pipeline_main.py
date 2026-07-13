@@ -12,12 +12,16 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 import traceback
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Mapping
 
 import pandas as pd
+
+from _security import UnsafePathError, open_safely, safe_resolve, scrub_error
+from asset_paths import safe_input_roots
 
 from compute.benchmark import select_benchmark_details
 from data_loader import Holding
@@ -234,7 +238,7 @@ def run_pipeline(
         logging.error("Pipeline failed: %s\n%s", exc, traceback.format_exc())
         return {
             "status": "error",
-            "error_message": str(exc),
+            "error_message": scrub_error(exc),
             "data": None,
             "artifacts": None,
         }
@@ -520,12 +524,22 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    with open(args.payload_file, "r", encoding="utf-8") as f:
-        payload = json.load(f)
+    roots = safe_input_roots()
+    try:
+        with open_safely(args.payload_file, "r", allowed_roots=roots) as f:
+            payload = json.load(f)
+        output_dir = (
+            str(safe_resolve(args.output_dir, allowed_roots=roots, must_exist=False))
+            if args.output_dir
+            else None
+        )
+    except UnsafePathError as exc:
+        sys.stderr.write(f"输入路径不安全: {exc}\n")
+        raise SystemExit(2)
 
     result = run_pipeline(
         payload,
-        output_dir=args.output_dir or None,
+        output_dir=output_dir,
         as_of=args.as_of or None,
         include_pdf=args.pdf,
         emit_artifacts=args.emit_artifacts,

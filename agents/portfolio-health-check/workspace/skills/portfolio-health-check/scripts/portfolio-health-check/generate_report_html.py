@@ -6,11 +6,17 @@ TODO: Migrate from f-string concatenation to Jinja2 templates for maintainabilit
 """
 
 from __future__ import annotations
+import html
 import sys
 import math
 from pathlib import Path
 
 from diagnosis import run_diagnosis
+
+
+def _esc(v) -> str:
+    """HTML 转义任意值。用户/上游可控字段插入 HTML 文本节点前必须调用，防 XSS。"""
+    return html.escape("" if v is None else str(v))
 
 
 def _get_assets():
@@ -247,12 +253,12 @@ def generate_html(result, output_path):
             if h["max_dd_recovery_days"] is not None
             else "尚未恢复"
         )
-        hrows += f'<tr><td class="tl"><b>{h["name"]}</b><br><span class="cd">{h["code"]}</span></td><td>{h["weight_pct"]:.0f}%</td><td class="{pc}">{spct(h["ann_return_arithmetic"])}</td><td>{pct(h["ann_volatility"])}</td><td class="neg">{pct(h["max_drawdown"])}<br><span class="cd">{rec}</span></td><td class="{sc}">{num(h["sharpe_ratio"])}</td><td>{num(h["sortino_ratio"])}</td><td>{pct(h["var_95"])}</td></tr>\n'
+        hrows += f'<tr><td class="tl"><b>{_esc(h["name"])}</b><br><span class="cd">{_esc(h["code"])}</span></td><td>{h["weight_pct"]:.0f}%</td><td class="{pc}">{spct(h["ann_return_arithmetic"])}</td><td>{pct(h["ann_volatility"])}</td><td class="neg">{pct(h["max_drawdown"])}<br><span class="cd">{rec}</span></td><td class="{sc}">{num(h["sharpe_ratio"])}</td><td>{num(h["sortino_ratio"])}</td><td>{pct(h["var_95"])}</td></tr>\n'
 
     # Correlation cells
     ccells = ""
     for i in range(n):
-        ccells += f'<div class="cl">{sl[i]}</div>'
+        ccells += f'<div class="cl">{_esc(sl[i])}</div>'
         for j in range(n):
             v = cm["matrix"][i][j]
             ccells += f'<div class="cc" style="background:{_corr_bg(v)};color:{_corr_tc(v)}">{v:.2f}</div>\n'
@@ -262,8 +268,8 @@ def generate_html(result, output_path):
     rcbars = ""
     for h in sorted(rc["by_holding"], key=lambda x: -x["pct_risk_contribution"]):
         w = h["pct_risk_contribution"] / mx_rc * 100
-        name = nm.get(h["code"], h["code"])
-        rcbars += f'<div class="rb"><div class="rl">{name}<span class="cd">{h["code"]}</span></div><div class="rw"><div class="rf" style="width:{w:.0f}%"></div><span class="rv">{h["pct_risk_contribution"] * 100:.1f}%</span></div><div class="rr">权重{h["weight_raw"] * 100:.1f}%</div></div>\n'
+        name = _esc(nm.get(h["code"], h["code"]))
+        rcbars += f'<div class="rb"><div class="rl">{name}<span class="cd">{_esc(h["code"])}</span></div><div class="rw"><div class="rf" style="width:{w:.0f}%"></div><span class="rv">{h["pct_risk_contribution"] * 100:.1f}%</span></div><div class="rr">权重{h["weight_raw"] * 100:.1f}%</div></div>\n'
 
     # Sector bars
     sebars = ""
@@ -276,15 +282,15 @@ def generate_html(result, output_path):
     fhtml = ""
     for f in fl:
         cls = "fh" if f["severity"] == "high" else "fm"
-        sev_cn = f.get("severity_cn", "高" if f["severity"] == "high" else "中")
-        metric_cn = f.get("metric_cn", f["metric"])
-        fhtml += f'<div class="fc {cls}"><div class="fhd"><span class="fs">{sev_cn}</span>{metric_cn}</div><div class="fb">{f["explanation"]}</div><div class="fv">实际值 {f["actual_value"]}　·　阈值 {f["threshold"]}</div></div>\n'
+        sev_cn = _esc(f.get("severity_cn", "高" if f["severity"] == "high" else "中"))
+        metric_cn = _esc(f.get("metric_cn", f["metric"]))
+        fhtml += f'<div class="fc {cls}"><div class="fhd"><span class="fs">{sev_cn}</span>{metric_cn}</div><div class="fb">{_esc(f["explanation"])}</div><div class="fv">实际值 {_esc(f["actual_value"])}　·　阈值 {_esc(f["threshold"])}</div></div>\n'
 
     # Liquidity cards (same style as risk flags)
     has_pmv = lq.get("portfolio_market_value") is not None
     liq_cards = ""
     for h in lq["holdings"]:
-        name = nm.get(h["code"], h["code"])
+        name = _esc(nm.get(h["code"], h["code"]))
         days = h.get("liquidation_days")
         turnover = h["avg_daily_turnover"] / 1e8
         if not has_pmv:
@@ -312,7 +318,7 @@ def generate_html(result, output_path):
             level = "流动性良好"
             desc = f"{name} 当前持仓金额相对其日均成交量非常小，{days:.1f} 天内即可轻松卖出，不会对市场价格造成明显影响。"
             val_line = f"预计清仓 {days:.1f} 天　·　日均成交额 {turnover:.1f} 亿"
-        liq_cards += f'<div class="fc {cls}"><div class="fhd"><span class="fs">{level}</span>{name}<span class="cd" style="display:inline;margin-left:6px">{h["code"]}</span></div><div class="fb">{desc}</div><div class="fv">{val_line}</div></div>\n'
+        liq_cards += f'<div class="fc {cls}"><div class="fhd"><span class="fs">{level}</span>{name}<span class="cd" style="display:inline;margin-left:6px">{_esc(h["code"])}</span></div><div class="fb">{desc}</div><div class="fv">{val_line}</div></div>\n'
 
     # Warnings — split into data-gap notices vs general warnings
     data_gap_warnings = [
@@ -321,13 +327,13 @@ def generate_html(result, output_path):
         if "无价格数据" in w or "权重" in w and "分配" in w
     ]
     other_warnings = [w for w in m.get("warnings", []) if w not in data_gap_warnings]
-    whtml = "".join(f'<div class="wi">• {w}</div>' for w in other_warnings)
+    whtml = "".join(f'<div class="wi">• {_esc(w)}</div>' for w in other_warnings)
 
     # Data coverage notice block
     dcov_html = ""
     if data_gap_warnings:
         dcov_items = "".join(
-            f'<div class="fc fm"><div class="fb" style="font-size:10px">{w}</div></div>\n'
+            f'<div class="fc fm"><div class="fb" style="font-size:10px">{_esc(w)}</div></div>\n'
             for w in data_gap_warnings
         )
         dcov_html = f"""<div class="sp"></div>
@@ -338,7 +344,7 @@ def generate_html(result, output_path):
     # Correlation high pairs
     hphtml = ""
     for p in cm["high_correlation_pairs"]:
-        hphtml += f'<div style="font-size:9px;color:#F04438">⚠ {p["pair"][0]} — {p["pair"][1]}: {p["correlation"]:.2f}</div>'
+        hphtml += f'<div style="font-size:9px;color:#F04438">⚠ {_esc(p["pair"][0])} — {_esc(p["pair"][1])}: {p["correlation"]:.2f}</div>'
     if not hphtml:
         hphtml = '<div style="font-size:9px;color:#12B76A;margin-top:4px">✓ 无超阈值高相关配对</div>'
 
@@ -458,14 +464,14 @@ tr:last-child{{font-weight:600;background:#EEF2FF}}
 <h1>投资组合深度量化诊断</h1>
 <h2>Deep Quantitative Diagnosis Report</h2>
 <dl class="cv-mt">
-<dt>风险偏好</dt><dd>{cn_tol(m["risk_tolerance"])}</dd>
-<dt>投资期限</dt><dd>{m["investment_horizon"]}</dd>
-<dt>仓位风格</dt><dd>{cn_sty(m["position_style"])}</dd>
-<dt>数据频率</dt><dd>{m["data_frequency"]} · {m["lookback_period"]}</dd>
-<dt>数据范围</dt><dd>{m["date_range"][0]} ~ {m["date_range"][1]}</dd>
+<dt>风险偏好</dt><dd>{_esc(cn_tol(m["risk_tolerance"]))}</dd>
+<dt>投资期限</dt><dd>{_esc(m["investment_horizon"])}</dd>
+<dt>仓位风格</dt><dd>{_esc(cn_sty(m["position_style"]))}</dd>
+<dt>数据频率</dt><dd>{_esc(m["data_frequency"])} · {_esc(m["lookback_period"])}</dd>
+<dt>数据范围</dt><dd>{_esc(m["date_range"][0])} ~ {_esc(m["date_range"][1])}</dd>
 <dt>数据点数</dt><dd>{m["data_points"]} bars · AF {m["annualization_factor"]}</dd>
 </dl>
-<div class="cv-ft">Generated {m["computed_at"][:10]} · BEIXI AI × qVeris Quantitative Engine</div>
+<div class="cv-ft">Generated {_esc(m["computed_at"][:10])} · BEIXI AI × qVeris Quantitative Engine</div>
 </div>
 
 <!-- PAGE 2: KPI + TABLE -->
@@ -507,7 +513,7 @@ tr:last-child{{font-weight:600;background:#EEF2FF}}
 <div class="st">02 <span>相关性矩阵 Correlation</span></div>
 <div class="nt">这张表格回答一个问题：<b>您的持仓会不会一起跌？</b>每个格子里的数字从 -1 到 +1，含义如下：<br><b>接近 +1（红色）</b>= 两只股票涨跌几乎同步，如果一只跌了另一只大概率也跌，把鸡蛋放在了同一个篮子里。<br><b>接近 0（浅色）</b>= 两只股票各走各的，一只跌的时候另一只不一定跌——这就是好的分散效果。<br><b>负值（蓝色）</b>= 一只涨的时候另一只倾向于跌，天然的对冲关系，非常理想。</div>
 <div class="cg">
-<div></div>{"".join(f'<div class="cl">{l}</div>' for l in sl)}
+<div></div>{"".join(f'<div class="cl">{_esc(l)}</div>' for l in sl)}
 {ccells}
 </div>
 {hphtml}
@@ -548,7 +554,7 @@ tr:last-child{{font-weight:600;background:#EEF2FF}}
 <tr><td>HHI 赫芬达尔指数</td><td>{co["hhi"]:.4f}</td><td class="fn">接近 0 = 非常分散；接近 1 = 几乎全押一只</td></tr>
 <tr><td>Effective N 等效持仓数</td><td>{co["effective_n"]:.1f}</td><td class="fn">虽然您持有多只标的，但由于仓位不均，分散效果相当于持有 {co["effective_n"]:.1f} 只等权股票</td></tr>
 <tr><td>前三大占比</td><td>{co["top_3_pct"]:.0%}</td><td class="fn">前三大持仓合计占了您组合的 {co["top_3_pct"]:.0%}，超过 80% 通常认为偏集中</td></tr>
-<tr><td>单持仓最大</td><td>{co["max_holding_pct"]:.0%}</td><td class="fn">您最重的一只持仓占比，对应{cn_tol(m["risk_tolerance"])}型投资者的参考上限进行判断</td></tr>
+<tr><td>单持仓最大</td><td>{co["max_holding_pct"]:.0%}</td><td class="fn">您最重的一只持仓占比，对应{_esc(cn_tol(m["risk_tolerance"]))}型投资者的参考上限进行判断</td></tr>
 <tr><td>单行业最大</td><td>{co["max_sector_pct"]:.0%}</td><td class="fn">您在同一行业的最大合计占比</td></tr>
 </table>
 </div>
@@ -556,8 +562,8 @@ tr:last-child{{font-weight:600;background:#EEF2FF}}
 <div class="st">07 <span>基准对比 Benchmark</span></div>
 <div class="nt">单独看收益高低还不够，还要和「大盘」比。就像考试不仅看绝对分数，还要看在班级里排第几。我们根据您持仓的市值特征，自动选择了一个合适的市场基准来做对比。</div>
 <table class="mt">
-<tr><td>基准指数</td><td>{bm["benchmark_name"]} ({bm["benchmark_code"]})</td><td class="fn">代表整个市场的平均表现，作为您组合的比较对象</td></tr>
-<tr><td>选择依据</td><td>{bm.get("selection_rule", "—")}</td><td class="fn">按持仓加权平均市值自动判断偏大盘还是偏中小盘</td></tr>
+<tr><td>基准指数</td><td>{_esc(bm["benchmark_name"])} ({_esc(bm["benchmark_code"])})</td><td class="fn">代表整个市场的平均表现，作为您组合的比较对象</td></tr>
+<tr><td>选择依据</td><td>{_esc(bm.get("selection_rule", "—"))}</td><td class="fn">按持仓加权平均市值自动判断偏大盘还是偏中小盘</td></tr>
 <tr><td>Beta 贝塔</td><td>{num(bm.get("beta"))}</td><td class="fn">您的组合跟着大盘走的程度。= 1 表示完全跟随，< 1 表示比大盘稳，> 1 表示比大盘波动更大</td></tr>
 <tr><td>Alpha 超额收益</td><td class="{"pos" if (bm.get("alpha_annual") or 0) > 0 else ""}">{spct(bm.get("alpha_annual"))}</td><td class="fn">扣除大盘涨跌影响后，您的组合额外多赚（或少赚）了多少。正数说明选股有效</td></tr>
 <tr><td>跟踪误差</td><td>{pct(bm.get("tracking_error"))}</td><td class="fn">您的组合和大盘走势偏离多少。越小越像指数基金，越大说明选股越「有主见」</td></tr>
@@ -577,7 +583,7 @@ tr:last-child{{font-weight:600;background:#EEF2FF}}
 <div class="pg"><div class="ct">
 <div class="gl"></div>
 <div class="st">09 <span>风险标记 Risk Flags</span></div>
-<div class="nt">我们根据您的风险偏好（<b>{cn_tol(m["risk_tolerance"])}型</b>）和投资期限（<b>{m["investment_horizon"]}</b>），为您设定了对应的安全阈值。当某项指标超出阈值时，会触发下方的标记提醒。<span class="r">「高」级别</span>意味着该项已明显超出安全范围，建议优先调整；<span style="color:#F79009">「中」级别</span>尚在可接受边缘，建议留意观察。没有标记不代表完美，只是说明各项指标都在您的风险承受范围内。</div>
+<div class="nt">我们根据您的风险偏好（<b>{_esc(cn_tol(m["risk_tolerance"]))}型</b>）和投资期限（<b>{_esc(m["investment_horizon"])}</b>），为您设定了对应的安全阈值。当某项指标超出阈值时，会触发下方的标记提醒。<span class="r">「高」级别</span>意味着该项已明显超出安全范围，建议优先调整；<span style="color:#F79009">「中」级别</span>尚在可接受边缘，建议留意观察。没有标记不代表完美，只是说明各项指标都在您的风险承受范围内。</div>
 {fhtml if fhtml else '<div style="color:#12B76A;font-size:10px;margin:6px 0">✓ 所有指标均在阈值范围内，未触发风险标记</div>'}
 {dcov_html}
 {f'<div class="sp"></div><div class="st">{"11" if dcov_html else "10"} <span>其他提示 Notes</span></div>' + whtml if whtml else ""}
