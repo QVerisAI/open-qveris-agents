@@ -106,10 +106,11 @@ def test_prewalk_rejects_in_root_symlink(tmp_path):
 def test_safe_input_roots_allows_tmp_but_blocks_escape():
     # agent skill 按约定把 payload 写在 /tmp（deep-diagnosis），必须允许；但逃逸到 /etc 仍拒
     import tempfile
+    import uuid
     from asset_paths import safe_input_roots
 
     tmpdir = Path(tempfile.gettempdir())
-    probe = tmpdir / "phc_probe.json"
+    probe = tmpdir / f"phc_probe_{uuid.uuid4().hex}.json"  # 唯一名，防并行竞态
     probe.write_text("{}", encoding="utf-8")
     try:
         assert safe_resolve(str(probe), allowed_roots=safe_input_roots()) == probe.resolve()

@@ -30,8 +30,11 @@ def safe_input_roots(start: Path | None = None) -> list[Path]:
     逃逸到 /etc 等（../ 解析后越出全部根即拒）。
     """
     roots: list[Path] = [Path.cwd(), Path(__file__).resolve().parent]
-    for tmp in {tempfile.gettempdir(), "/tmp"}:
-        roots.append(Path(tmp))
+    roots.append(Path(tempfile.gettempdir()))
+    # skill 硬编码 /tmp；is_absolute() 在 POSIX=True、Windows=False，避免误把 C:\tmp 当可信根
+    posix_tmp = Path("/tmp")
+    if posix_tmp.is_absolute() and posix_tmp != roots[-1]:
+        roots.append(posix_tmp)
     try:
         roots.append(get_assets_dir(start))
     except FileNotFoundError:
