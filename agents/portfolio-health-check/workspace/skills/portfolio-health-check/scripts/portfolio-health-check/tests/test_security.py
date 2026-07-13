@@ -103,6 +103,23 @@ def test_prewalk_rejects_in_root_symlink(tmp_path):
         safe_resolve(str(link), allowed_roots=[tmp_path])
 
 
+def test_safe_input_roots_allows_tmp_but_blocks_escape():
+    # agent skill 按约定把 payload 写在 /tmp（deep-diagnosis），必须允许；但逃逸到 /etc 仍拒
+    import tempfile
+    import uuid
+    from asset_paths import safe_input_roots
+
+    tmpdir = Path(tempfile.gettempdir())
+    probe = tmpdir / f"phc_probe_{uuid.uuid4().hex}.json"  # 唯一名，防并行竞态
+    probe.write_text("{}", encoding="utf-8")
+    try:
+        assert safe_resolve(str(probe), allowed_roots=safe_input_roots()) == probe.resolve()
+    finally:
+        probe.unlink()
+    with pytest.raises(UnsafePathError):
+        safe_resolve("/etc/hosts", allowed_roots=safe_input_roots())
+
+
 def test_mode_to_flags_combined_modes():
     # a+/x+/w+ 不能因命中 + 分支而丢失 O_CREAT/O_APPEND/O_EXCL
     from _security.path_safety import _mode_to_flags
