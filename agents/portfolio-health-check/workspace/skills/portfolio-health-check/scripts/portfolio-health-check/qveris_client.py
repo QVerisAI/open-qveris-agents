@@ -20,12 +20,15 @@ from urllib.parse import quote
 from urllib.request import Request
 
 from _security import (
+    UnsafePathError,
     UnsafeUrlError,
+    open_safely,
     safe_filename_segment,
     safe_urlopen,
     scrub_error,
 )
 
+from asset_paths import safe_input_roots
 from date_utils import shift_months, shift_years, format_ymd
 
 import pandas as pd
@@ -1448,8 +1451,14 @@ def main() -> None:
     if args.command == "execute":
         params_source = args.parameters_json or args.parameters
         if args.parameters_file:
-            with open(args.parameters_file, "r", encoding="utf-8-sig") as f:
-                params_source = f.read()
+            try:
+                with open_safely(
+                    args.parameters_file, "r", allowed_roots=safe_input_roots(),
+                    encoding="utf-8-sig",
+                ) as f:
+                    params_source = f.read()
+            except UnsafePathError as exc:
+                raise SystemExit(f"parameters-file 路径不安全: {exc}")
         if not params_source:
             raise SystemExit(
                 "Provide parameters with --parameters-json, --parameters-file, or the positional parameters argument"

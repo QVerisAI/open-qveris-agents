@@ -232,3 +232,17 @@ def test_pipeline_main_rejects_traversal(monkeypatch, capsys):
         pipeline_main.main()
     assert exc.value.code == 2
     assert "路径不安全" in capsys.readouterr().err
+
+
+def test_qveris_client_cli_rejects_parameters_file_traversal(monkeypatch):
+    # qveris_client 自己的 CLI 也有 --parameters-file 路径入口（文档与首轮修复均漏）
+    import qveris_client
+
+    monkeypatch.setattr(qveris_client, "QVerisClient", lambda *a, **k: None)  # 绕过 token 门槛
+    monkeypatch.setattr(
+        sys, "argv",
+        ["qveris_client.py", "execute", "sometool", "--parameters-file", "/etc/hosts"],
+    )
+    with pytest.raises(SystemExit) as exc:
+        qveris_client.main()
+    assert "路径不安全" in str(exc.value)
