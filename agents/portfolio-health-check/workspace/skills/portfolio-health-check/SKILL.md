@@ -1,191 +1,185 @@
 ---
 name: portfolio-health-check
-description: 串联投资组合快速诊断、深度诊断和优化处方三个子技能。支持对话模式（交互式阶段确认）和 API 模式（无状态一次性执行）。
+description: 投资组合健康检查：快速诊断、深度诊断、优化处方三阶段串行完成持仓分析。支持对话模式（交互式阶段确认）和 API 模式（无状态一次性执行）。
 ---
 
-# Portfolio Health Check Workflow
+# 投资组合健康检查
 
-## 角色
-
-这是总控技能，不负责单独输出完整分析结论。它只负责：
-
-- 收集用户输入
-- 决定先跑哪个子技能
-- 串联三个子技能完成完整的组合分析流程
+本技能通过三个阶段串行完成一次完整的组合分析：**快速诊断 → 深度诊断 → 优化处方**。三个阶段的执行步骤全部写在本文件内，无需跳转其它 SKILL 文件。
 
 ## 调用模式
 
 ### 对话模式（conversation）
-
-用于交互式场景（用户在聊天窗口中逐步输入持仓和参数）：
-
+交互式场景（用户在聊天窗口逐步输入持仓和参数）：
 - 每一阶段结束后询问用户是否继续下一阶段
-- 如果用户明确拒绝继续，就停止在当前阶段
-- 如果信息不足，先追问完成当前阶段所需的最少信息
-- 最多进行 3 轮补充信息对话
+- 用户明确拒绝就停在当前阶段
+- 信息不足先追问完成当前阶段所需的最少信息
+- 最多 3 轮补充信息对话
 
 ### API 模式（api）
-
-用于程序化调用（payload 完整传入，无需追问）：
-
-- 不追问，不确认，直接执行
-- 各阶段通过独立 endpoint 调用，不串联
-- `/api/v1/portfolio/deep-diagnosis` -> `run_pipeline()`
-- `/api/v1/portfolio/optimization` -> `prescription_main.run_optimization()`
-
-## 子技能
-
-- `portfolio-quick-diagnosis/`：快速诊断，负责持仓概览、集中度检查和总体评价。
-- `portfolio-deep-diagnosis/`：深度诊断，调用 `run_pipeline()` 完成量化计算。
-- `portfolio-optimization/`：优化处方，调用 `prescription_main.py` 完成约束优化。
+程序化调用（payload 完整传入，无需追问）：不追问、不确认、直接执行；各阶段独立调用，不串联。
 
 ## 总规则
+- 全程中文。
+- 不编造实时数据、最新持仓、精确市值或任何未提供/未验证的外部事实。
+- 不给具体买卖指令、不预测市场走势。
+- 始终区分"已知事实"和"基于假设"。
+- 默认不生成 HTML/PDF/本地报告文件，优先把每阶段结论整理成结构化中文文字。
+- 任何数值型结果（波动率、回撤、夏普、相关性等）必须来自脚本实际计算输出，不得估算或编造。
 
-- 全程使用中文。
-- 不要编造实时数据、最新持仓、精确市值或任何未提供、未验证的外部事实。
-- 不要给出具体买卖指令。
-- 始终区分"已知信息"和"基于假设的信息"。
-- 默认不要生成 HTML、PDF 或其他本地报告文件。优先把每阶段结论整理成结构化中文文字，交给 OpenClaw 继续转述给客户。
+## 路径与脚本约定
+- 所有可执行逻辑都在 `scripts/portfolio-health-check/` 下的 Python 脚本里（`qveris_client.py` / `pipeline_main.py` / `prescription_main.py`）。
+- `SKILL_ROOT` = 本 SKILL.md 所在目录。执行前从 SKILL.md 加载路径推导技能根目录，用 `cd "$SKILL_ROOT"`，不要硬编码绝对路径。
+- **只通过 `python scripts/portfolio-health-check/<脚本>.py <参数>` 调用包内 .py 脚本。禁止 `python -c` 内联执行、禁止读脚本源码"理解"调用方式、禁止设置/覆盖/检查 `QVERIS_TOKEN`**（API Key 已由环境变量预配置）。命令返回错误时直接把错误告知用户，不 fallback 到 web_search、不编造数据。
 
-## 路径约定
+---
 
-本技能的所有脚本均位于本 SKILL.md 所在目录下。执行命令前，agent 应先从 SKILL.md 的加载路径推导出技能根目录，后续所有 `cd` 使用该路径，**不要硬编码绝对路径**：
+## 阶段一：快速诊断
 
-```bash
-# SKILL_ROOT = 本 SKILL.md 所在目录
-cd "$SKILL_ROOT" && python scripts/portfolio-health-check/qveris_client.py identify "贵州茅台"
-```
+目标：把持仓整理成结构化快速诊断结果——标的识别、持仓确认、集中度检查、总体评价。
 
-如果 agent 是通过读取 SKILL.md 获得路径的，直接取其父目录即可。
-
-## 数据来源原则
-
-- **第 1 阶段**必须先调用 QVeris 做标的识别（`identify` 命令），至少补齐股票名称/代码互查、公司简介和行业简介。如 QVeris 无法返回结果，再用公开网络检索补全基础背景。
-- **第 2 阶段**的数据拉取由 `run_pipeline()` 内部自动完成（QVeris + THS），不需要手动调用。
-- **第 3 阶段**的数据全部来自 Phase 2 输出的 `_internal` 字段，不需要手动拉取。
-- 不要自己编造任何数值型结果；拿不到数据时，要明确写"暂无充分证据"。
-
-## QVeris 工具（仅第 1 阶段使用）
+### 1. 标的识别（阶段一第一步，必做）
+用 QVeris `identify` 命令一次性获取名称/代码互查、公司简介、行业分类：
 
 ```bash
 cd "$SKILL_ROOT" && python scripts/portfolio-health-check/qveris_client.py identify "贵州茅台"
 cd "$SKILL_ROOT" && python scripts/portfolio-health-check/qveris_client.py identify "贵州茅台" "中国平安" "沪深300ETF"
-cd "$SKILL_ROOT" && python scripts/portfolio-health-check/qveris_client.py state show
 ```
 
-- 第 1 阶段只要开始标的识别，就必须至少调用一次 `identify`。
-- `identify` 结果自动写入 `state/portfolio_state.json` 的 `stage1`。
+- 支持输入：公司名（`"贵州茅台"`）、完整代码（`"600519.SH"`）、纯数字（`"600519"`）、ETF 名（`"沪深300ETF"`）。
+- `identify` 按优先级尝试 `hangseng_polysource.stock.basicCorpInfo.retrieve.v2`（主，返回全称/行业分类/主营/概念）→ `ths_ifind.company_basics.v1`（fallback 补 name）。结果自动写入 `state/portfolio_state.json` 的 `stage1`，供后续脚本读取；用户更正后更新同一文件，不另存。
+- 返回字段：`code_lookup.codes`（THS 代码列表）、`code_lookup.is_ambiguous`（是否多候选）、`primary_code`、`company`（全称/主营/概念）、`asset_type`（`stock`/`fund_or_etf`）、`industry`（个股才有）。
+- 歧义处理：`is_ambiguous=true` → 列候选、标"待确认"；A+H 多市场默认取第一个（通常 A 股）、备注其余；`resolved=false` → 改用 `search` 命令更宽泛搜索；QVeris 找不到再用公开网络补全。
 
-### QVeris 调用规则（必须遵守）
+### 2. 信息收集与确认
+- 从用户消息提取：资产名称、可能代码、输入形式（金额/比例/股数/仅名称）、现金线索（"现金"/"货币基金"/"剩余"）。
+- 金额 → 按总额归一化为比例；只给股数 → 追问大致市值或占比，不凭直觉估权重。
+- **比例加总不足 100% 不能默认剩余是现金**，必须追问剩余部分是什么。
+- 追问尽量合并成一次，只问缺失项。
 
-1. **直接执行上面的命令，不要做任何额外操作。** API Key 已通过环境变量预配置，不需要你检查、设置、传递或确认。
-2. **禁止**：读 qveris_client.py 源码来"理解"如何调用、用 python -c 内联调用、设置或覆盖 QVERIS_TOKEN 环境变量、检查 API Key 是否存在。
-3. **如果命令返回错误**：直接把错误信息告诉用户，说明"QVeris 数据获取失败"。不要 fallback 到 web_search 或自己编造数据。
-4. **禁止编造数据**：任何数值型分析结果（波动率、回撤、夏普比率、相关性等）必须来自 `run_pipeline()` 或 `run_optimization()` 的实际计算输出。你不具备估算这些数值的能力，不要尝试。
+### 3. 阶段一输出顺序（先两块，再确认表）
+1. **名称/代码互查表**：名称、代码、候选代码、是否待确认（只对名称和代码，不放长简介）。
+2. **公司与行业简介**：简短中文说明主营、业务特点、所属行业。
+3. **持仓确认表**：
 
-## 信息收集总则
+| 资产名称 | 代码 | 占比 | 资产类别 | 备注 |
+|---|---|---:|---|---|
+| 示例资产 | 600519.SH | 30% | 股票/ETF/债券/现金/其他 | 待确认（如需） |
 
-每次收集信息都遵守这三条：
+无法确认的字段写"待确认"/"无法确认"。确认提示示例："请确认以下持仓信息；如有不准确请直接修改名称、仓位或现金占比。"
 
-1. 先收集"完成当前阶段必须有"的信息，不提前问下一阶段内容。
-2. 把同一轮需要问的问题合并成一条，避免碎片化追问。
-3. 能从用户原文直接识别的内容不要重复确认，只有缺失项才问。
+### 4. 生成分析与报告
+用户明确确认持仓后：
+- 按 `portfolio-quick-diagnosis/analysis_prompt.md` 生成分析要点（分析逻辑、检索范围、推断边界、风险判断）。
+- 按 `portfolio-quick-diagnosis/report_prompt.md` 生成最终结构化中文交付文案。
+- 对 ETF 与个股重叠只做保守判断（"可能存在重叠"）；无法识别的标的写"无法确认"。
 
-如果用户一次给了很多信息，先整理成结构化输入，再进入下一步。
+### 5. 收尾
+输出结构化快速诊断结果后，询问用户是否继续深度诊断。
 
-## 阶段一需要收集的信息
+---
 
-阶段一的目标是把持仓信息整理清楚并完成确认表，所以必须尽量收齐以下内容：
+## 阶段二：深度诊断
 
-- 持仓清单
-- 每个持仓的资产名称
-- 每个持仓可能的证券代码
-- 每个持仓的输入形式：金额、比例、股数、仅名称
-- 每个持仓对应的仓位或金额
-- 现金占比
-- 是否存在"剩余未动""货币基金""活期理财"等现金线索
-- 哪些标的暂时无法确认
+仅在阶段一完成且用户明确同意后进行。目标：量化分析波动率、相关性、回撤、因子暴露、风险贡献。
 
-如果用户给出的持仓比例加总不足 100%，不能假设剩余部分是现金。必须追问用户：剩余部分是现金、货币基金，还是有其他持仓没有列出。只有在用户明确回答后，才能确定剩余部分的归属。
+### 1. 收集 4 个参数（缺一不可）
+| 参数 | 字段 | 选项 |
+|---|---|---|
+| 换仓频率 | `rebalance_frequency` | `intraday`/`weekly`/`monthly`/`quarterly`/`buy_and_hold` |
+| 仓位风格 | `position_style` | `market_timing`/`full_rotation`/`constant_mix`/`dca`/`core_satellite` |
+| 风险偏好 | `risk_tolerance` | `conservative`/`moderate`/`aggressive`/`very_aggressive` |
+| 投资期限 | `investment_horizon` | `<1y`/`1-3y`/`3-5y`/`>5y` |
 
-如果用户只给名称没给仓位，优先追问各标的大概占比或金额。
-如果用户只给股数，优先追问大致市值或占比。
-如果代码不清楚，优先追问标的全称或交易所代码。
+用户不理解某参数时用选项形式提问。
 
-阶段一结束时，必须得到一份可供确认的持仓表。
+### 2. 构建 payload 数据文件
+从 `state/portfolio_state.json` 的 `stage1` 读持仓，写一个 payload JSON 数据文件到 `/tmp/portfolio_payload.json`，结构：
 
-## 阶段二需要收集的信息
+```json
+{
+    "holdings": [
+        {"code": "600519.SH", "name": "贵州茅台", "weight_pct": 30.0},
+        {"code": "300750.SZ", "name": "宁德时代", "weight_pct": 25.0}
+    ],
+    "cash_pct": 10.0,
+    "params": {
+        "rebalance_frequency": "monthly", "position_style": "core_satellite",
+        "risk_tolerance": "moderate", "investment_horizon": "3-5y",
+        "portfolio_market_value": 1000000
+    }
+}
+```
 
-阶段二只在快速诊断完成后进行，目标是补齐深度诊断参数。
+每个 holding 必须有 `code` 和 `weight_pct`。
 
-必须收集：
+### 3. 运行深度诊断脚本
+```bash
+cd "$SKILL_ROOT" && python scripts/portfolio-health-check/pipeline_main.py \
+  /tmp/portfolio_payload.json --emit-artifacts \
+  --output-dir /tmp/portfolio_output --as-of $(date +%Y-%m-%d)
+```
 
-- 换仓频率（`rebalance_frequency`）：日内 / 每周 / 每月 / 每季 / 长期持有
-- 仓位管理方式（`position_style`）：择时 / 轮动 / 恒定比例 / 定投 / 核心-卫星
-- 风险承受度（`risk_tolerance`）：保守 / 稳健 / 积极 / 激进
-- 投资期限（`investment_horizon`）：<1年 / 1-3年 / 3-5年 / >5年
+`pipeline_main.py` 内部自动完成：QVeris 取数（行情/基本面/市值/基准）→ 按 `rebalance_frequency` 选数据粒度和回看窗口 → 15 步量化诊断 → 整理成 `client_output`。**不要手动调 QVeris/THS，不要手动跑分析逻辑，CLI 是唯一计算入口。**
 
-如果用户不理解这些项，优先用选项形式提问，不要让用户自由发挥太多。
+### 4. 读取并解读结果
+读取 `/tmp/portfolio_output/diagnosis_result.json`。它是 envelope：`status="ok"` 时 `data` 含 `correlation_matrix`/`risk_metrics`/`risk_contribution`/`concentration`/`benchmark`/`factor_exposure`/`sector_exposure`/`liquidity`/`risk_flags`/`metadata`，`client_output` 含 `headline`/`sections`/`markdown`；`_internal.json` 供阶段三使用。
 
-## 阶段三需要收集的信息
+解读（status=ok）：先用 1-2 句给总体判断 → 优先用 `client_output` 作对客底稿 → 需补充再按序读 `risk_flags`（触发旗标+严重度）、`risk_metrics.portfolio`（波动/夏普/回撤）、`concentration`、`correlation_matrix.high_correlation_pairs`、`factor_exposure`、`liquidity`、`benchmark`。**不要贴原始 JSON，翻译成人话；不确定处标注为推断；只有用户明确要报告文件时才提 `artifacts` 路径。**
 
-阶段三只在深度诊断完成后进行，目标是收集优化约束。
+status=error：告知未完成，按 `error_message` 判断是数据问题（建议查代码/稍后重试）还是代码 bug（如实告知）。
 
-必须收集：
+### 5. 收尾
+解读完毕，询问用户是否继续优化处方。
 
-- 可投资范围（`allowed_markets`）：A股 / 港股通 / 美股 等
-- 可使用工具（`allowed_instruments`）：股票 / ETF / 期货 / 期权 等
-- 还能投入多少资金（`additional_capital_ratio`）：无 / 10-30% / 30-50% / 50%+
-- 这次优化的目标（`objectives`）：资产增值 / 稳定现金流 / 对冲风险 / 打新底仓
+---
 
-如果用户不理解这些项，先让用户从几个常见目标里选，不要让用户用长段文字自由描述。
+## 阶段三：优化处方
 
-## 股票代码处理规则
+仅在阶段二完成且用户明确同意后进行。目标：基于约束给出分层优化建议。
 
-如果用户只给了股票名称、ETF 名称或简称，没有给代码，可以先自己检索公开信息补全代码。
+### 1. 收集约束
+- 可投资范围 `allowed_markets`（A股/港股通/美股…）
+- 可用工具 `allowed_instruments`（股票/ETF/期货/期权…）
+- 追加资金 `additional_capital_ratio`（无/10-30%/30-50%/50%+）
+- 优化目标 `objectives`（资产增值/稳定现金流/对冲风险/打新底仓）
 
-1. 优先根据名称识别常见代码。
-2. 如果名称可能对应多个标的，先标记为待确认，再追问用户。
-3. 如果能高置信度识别，就直接补上代码，不要强迫用户自己补。
-4. 只有在名称歧义较大或无法确认时，才把代码标为"无法确认"。
+用户不理解时先给常见目标选项，不要让用户长段自由描述。
 
-## 强制流程（对话模式）
+### 2. 构建约束数据文件
+写一个 constraints JSON 数据文件到 `/tmp/portfolio_constraints.json`：
 
-### 第 1 阶段：快速诊断
+```json
+{
+    "allowed_markets": ["A-share"],
+    "allowed_instruments": ["stock", "etf"],
+    "additional_capital_ratio": "10-30%",
+    "objectives": ["growth"]
+}
+```
 
-1. 收集持仓、现金占比和必要的基础信息。
-2. 调用 `portfolio-quick-diagnosis/`。
-3. 先输出名称/代码互查表和公司/行业简介，再输出持仓确认表与结构化快速诊断结果。
-4. 询问用户是否继续进行深度诊断。
+### 3. 运行优化脚本
+```bash
+cd "$SKILL_ROOT" && python scripts/portfolio-health-check/prescription_main.py \
+  --diagnosis /tmp/portfolio_output/diagnosis_result.json \
+  --internal /tmp/portfolio_output/_internal.json \
+  --constraints-file /tmp/portfolio_constraints.json \
+  --output-dir /tmp/optimization_output
+```
 
-### 第 2 阶段：深度诊断
+`--internal` 指向阶段二输出的 `_internal.json`；缺失可省略（优化结果降级，跳过回验和压力测试）。`prescription_main.py` 内部完成：剥出诊断数据和 `_internal` → 解析约束 → 推理/映射/回验/压力测试 → 返回结构化处方。**阶段三所有数据来自阶段二输出，不要再调 QVeris。**
 
-仅在第 1 阶段完成且用户明确同意后进行。
+### 4. 读取并解读结果
+读取 `/tmp/optimization_output/optimization_result.json`。`status="ok"` 时 `data` 含 `recommendations`/`exclusive_groups`/`asset_alignment`/`constraints_applied`/`summary`/`client_output`/`execution_info`。优先用 `client_output` 作对客底稿，翻译成人话，只做方向性建议、不给具体买卖指令。
 
-1. 补充深度诊断所需参数。
-2. 调用 `portfolio-deep-diagnosis/`（内部通过 `run_pipeline()` 自动完成数据拉取和量化计算）。
-3. 输出深度分析的结构化结果。
-4. 询问用户是否继续进行优化处方。
-
-### 第 3 阶段：优化处方
-
-仅在第 2 阶段完成且用户明确同意后进行。
-
-1. 补充约束条件。
-2. 调用 `portfolio-optimization/`（内部通过 `prescription_main.py` 完成优化计算）。
-3. 输出结构化优化建议。
+---
 
 ## 顺序约束
+- 必须按 阶段一 → 阶段二 → 阶段三 顺序，不允许跳过或并行。
+- 对话模式下每阶段结束都要询问是否继续下一阶段。
 
-- 必须先完成第 1 阶段，才能进入第 2 阶段。
-- 必须先完成第 2 阶段，才能进入第 3 阶段。
-- 不允许跳过阶段。
-- 不允许并行执行阶段。
-- 对话模式下，每一阶段结束后都必须询问是否继续下一阶段。
-
-## 参考
-
-- `scripts/portfolio-health-check/qveris_client.py`
-- `portfolio-quick-diagnosis/SKILL.md`
-- `portfolio-deep-diagnosis/SKILL.md`
-- `portfolio-optimization/SKILL.md`
+## 参考文件
+- `scripts/portfolio-health-check/qveris_client.py` — 阶段一标的识别入口
+- `scripts/portfolio-health-check/pipeline_main.py` — 阶段二唯一计算入口
+- `scripts/portfolio-health-check/prescription_main.py` — 阶段三唯一计算入口
+- `portfolio-quick-diagnosis/analysis_prompt.md`、`portfolio-quick-diagnosis/report_prompt.md` — 阶段一分析/报告 prompt

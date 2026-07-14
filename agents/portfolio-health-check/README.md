@@ -117,10 +117,8 @@ workspace/
 ├── HEARTBEAT.md     # 定时任务
 └── skills/
     └── portfolio-health-check/
-        ├── SKILL.md                    # 总控 skill
-        ├── portfolio-quick-diagnosis/  # Phase 1
-        ├── portfolio-deep-diagnosis/   # Phase 2
-        ├── portfolio-optimization/     # Phase 3
+        ├── SKILL.md                    # 单一 skill：三阶段（快速/深度/优化）合一
+        ├── portfolio-quick-diagnosis/  # 阶段一分析/报告 prompt（analysis_prompt.md, report_prompt.md）
         └── scripts/
             └── portfolio-health-check/
                 ├── pipeline_main.py        # Phase 2 CLI
